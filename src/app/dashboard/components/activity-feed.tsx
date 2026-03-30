@@ -1,0 +1,110 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Globe, Monitor, Smartphone, Activity } from "lucide-react";
+import { createClient } from "../../../../supabase/client";
+import { formatDistanceToNow } from "date-fns";
+
+interface ClickEvent {
+  id: string;
+  country?: string;
+  country_code?: string;
+  device_type?: string;
+  clicked_at: string;
+  links?: { title?: string; short_code: string };
+}
+
+interface ActivityFeedProps {
+  initialClicks: ClickEvent[];
+}
+
+const deviceIcon = (type?: string) => {
+  if (type === "mobile") return <Smartphone className="w-3.5 h-3.5 text-cyan-400" />;
+  return <Monitor className="w-3.5 h-3.5 text-purple-400" />;
+};
+
+const countryFlag = (code?: string) => {
+  if (!code) return "🌍";
+  try {
+    return code.toUpperCase().replace(/./g, (char) =>
+      String.fromCodePoint(127397 + char.charCodeAt(0))
+    );
+  } catch {
+    return "🌍";
+  }
+};
+
+export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
+  const [clicks, setClicks] = useState<ClickEvent[]>(initialClicks);
+  const supabase = createClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("click_events_realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "click_events" },
+        async (payload) => {
+          const newClick = payload.new as ClickEvent;
+          if (newClick.links === undefined) {
+            const { data: linkData } = await supabase
+              .from("links")
+              .select("title, short_code")
+              .eq("id", (payload.new as any).link_id)
+              .single();
+            (newClick as any).links = linkData;
+          }
+          setClicks((prev) => [newClick, ...prev].slice(0, 20));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <div className="flex items-center gap-2 mb-4">
+        <Activity className="w-4 h-4 text-primary" />
+        <h3 className="font-semibold text-sm">Live Activity</h3>
+        <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse ml-auto" />
+        <span className="text-xs text-muted-foreground">Real-time</span>
+      </div>
+
+      <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
+        {clicks.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
+            <Activity className="w-8 h-8 mb-2 opacity-30" />
+            <p className="text-sm">No clicks yet. Share your links!</p>
+          </div>
+        ) : (
+          <AnimatePresence>
+            {clicks.map((click, i) => (
+              <motion.div
+                key={click.id}
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3, delay: i === 0 ? 0 : 0 }}
+                className="flex items-center gap-3 p-2.5 rounded-lg bg-muted/40 hover:bg-muted/70 transition-colors"
+              >
+                <span className="text-lg leading-none">{countryFlag(click.country_code)}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium text-foreground truncate">
+                    {click.links?.title || `/${click.links?.short_code || "link"}`}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {click.country || "Unknown"} · {formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true })}
+                  </p>
+                </div>
+                {deviceIcon(click.device_type)}
+              </motion.div>
+            ))}
+          </AnimatePresence>
+        )}
+      </div>
+    </div>
+  );
+}
