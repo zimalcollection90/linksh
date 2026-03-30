@@ -58,6 +58,29 @@ export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
           setClicks((prev) => [newClick, ...prev].slice(0, 20));
         }
       )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "click_events" },
+        async (payload) => {
+          const updatedClick = payload.new as ClickEvent;
+          if (updatedClick.links === undefined) {
+            const { data: linkData } = await supabase
+              .from("links")
+              .select("title, short_code")
+              .eq("id", (payload.new as any).link_id)
+              .single();
+            (updatedClick as any).links = linkData;
+          }
+
+          setClicks((prev) => {
+            const idx = prev.findIndex((c) => c.id === updatedClick.id);
+            if (idx === -1) return [updatedClick, ...prev].slice(0, 20);
+            const next = [...prev];
+            next[idx] = updatedClick;
+            return next.slice(0, 20);
+          });
+        }
+      )
       .subscribe();
 
     return () => {

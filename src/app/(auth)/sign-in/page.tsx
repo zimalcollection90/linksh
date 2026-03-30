@@ -7,19 +7,25 @@ import Link from "next/link";
 import { Zap } from "lucide-react";
 
 interface LoginProps {
-  searchParams: Promise<Message>;
+  searchParams: Promise<
+    Partial<{
+      redirect_to: string;
+    }> & Partial<Message>
+  >;
 }
 
 export default async function SignInPage({ searchParams }: LoginProps) {
-  const message = await searchParams;
+  const sp = await searchParams;
 
-  if ("message" in message) {
+  if ("success" in sp || "error" in sp || "message" in sp) {
     return (
       <div className="flex h-screen w-full flex-1 items-center justify-center p-4 sm:max-w-md">
-        <FormMessage message={message} />
+        <FormMessage message={sp as Message} />
       </div>
     );
   }
+
+  const redirectTo = sp.redirect_to;
 
   return (
     <>
@@ -35,6 +41,9 @@ export default async function SignInPage({ searchParams }: LoginProps) {
 
           <div className="rounded-2xl border border-border bg-card p-7 shadow-sm">
             <form className="flex flex-col space-y-5">
+              {redirectTo ? (
+                <input type="hidden" name="redirect_to" value={redirectTo} />
+              ) : null}
               <div className="space-y-1.5 text-center">
                 <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Welcome back</h1>
                 <p className="text-sm text-muted-foreground">
@@ -65,8 +74,6 @@ export default async function SignInPage({ searchParams }: LoginProps) {
               <SubmitButton className="w-full bg-primary hover:bg-primary/90 text-white" pendingText="Signing in..." formAction={signInAction}>
                 Sign in
               </SubmitButton>
-
-              <FormMessage message={message} />
             </form>
           </div>
         </div>

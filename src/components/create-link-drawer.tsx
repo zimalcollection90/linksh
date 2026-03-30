@@ -117,6 +117,19 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
     }
 
     setLoading(true);
+
+    // If this is a new protected link (or enabling protection during edit),
+    // require a password so the link can actually be unlocked.
+    if (isPasswordProtected) {
+      const wasPreviouslyProtected = Boolean(editLink?.is_password_protected);
+      const enablingProtection = !wasPreviouslyProtected;
+      if (!password && enablingProtection) {
+        setLoading(false);
+        toast.error("Password is required for protected links");
+        return;
+      }
+    }
+
     const supabase = createClient();
     const { data: { user } } = await supabase.auth.getUser();
 
@@ -149,6 +162,15 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
       utm_campaign: utmCampaign || null,
       status: "active",
     };
+
+    // `password_hash` carries the raw password only for server-side hashing triggers.
+    // When editing and the password field is left blank, we don't send `password_hash`
+    // so the existing hash remains intact.
+    if (isPasswordProtected) {
+      if (password) payload.password_hash = password;
+    } else {
+      payload.password_hash = null;
+    }
 
     let error: any;
 

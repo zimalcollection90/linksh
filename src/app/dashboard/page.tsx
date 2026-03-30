@@ -18,6 +18,8 @@ export default async function Dashboard() {
   const userId = profile?.id;
 
   let totalLinks = 0, totalClicks = 0, activeMembers = 0;
+  let heatmapData: Array<{ code: string; value: number }> = [];
+  let trendData: Array<{ date: string; clicks: number; earnings: number }> = [];
 
   if (isAdmin) {
     const [linksRes, clicksRes, membersRes] = await Promise.all([
@@ -48,6 +50,50 @@ export default async function Dashboard() {
     .select("*, links(title, short_code)")
     .order("clicked_at", { ascending: false })
     .limit(10);
+
+  if (isAdmin) {
+    const { data: heatmapClicks } = await supabase
+      .from("click_events")
+      .select("country_code")
+      .order("clicked_at", { ascending: false })
+      .limit(2000);
+
+    const counts: Record<string, number> = {};
+    for (const row of heatmapClicks || []) {
+      const code = row?.country_code?.toString().toUpperCase();
+      if (!code) continue;
+      counts[code] = (counts[code] || 0) + 1;
+    }
+
+    heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
+
+    const now = new Date();
+    const start = new Date(now);
+    start.setDate(start.getDate() - 13);
+
+    const { data: trendClicks } = await supabase
+      .from("click_events")
+      .select("clicked_at")
+      .gte("clicked_at", start.toISOString())
+      .order("clicked_at", { ascending: true })
+      .limit(5000);
+
+    const dayCounts: Record<string, number> = {};
+    for (const row of trendClicks || []) {
+      const ts = row?.clicked_at ? new Date(row.clicked_at) : null;
+      if (!ts) continue;
+      const key = ts.toISOString().slice(0, 10);
+      dayCounts[key] = (dayCounts[key] || 0) + 1;
+    }
+
+    trendData = Array.from({ length: 14 }, (_, i) => {
+      const d = new Date(start);
+      d.setDate(start.getDate() + i);
+      const key = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return { date: label, clicks: dayCounts[key] || 0, earnings: 0 };
+    });
+  }
 
   let topMembers: any[] = [];
   if (isAdmin) {
@@ -87,6 +133,8 @@ export default async function Dashboard() {
         recentClicks={recentClicks || []}
         topMembers={topMembers}
         profile={profile}
+        heatmapData={heatmapData}
+        trendData={trendData}
       />
     );
   }

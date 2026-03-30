@@ -6,6 +6,7 @@ import ActivityFeed from "./activity-feed";
 import TrendCharts from "./trend-charts";
 import MemberLeaderboard from "./member-leaderboard";
 import RecentLinks from "./recent-links";
+import WorldHeatmap from "./world-heatmap";
 import { motion } from "framer-motion";
 
 interface AdminDashboardProps {
@@ -19,9 +20,19 @@ interface AdminDashboardProps {
   recentClicks: any[];
   topMembers: any[];
   profile: any;
+  heatmapData: Array<{ code: string; value: number }>;
+  trendData?: Array<{ date: string; clicks: number; earnings: number }>;
 }
 
-export default function AdminDashboard({ stats, recentLinks, recentClicks, topMembers, profile }: AdminDashboardProps) {
+export default function AdminDashboard({
+  stats,
+  recentLinks,
+  recentClicks,
+  topMembers,
+  profile,
+  heatmapData,
+  trendData,
+}: AdminDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "Admin";
 
   return (
@@ -44,12 +55,15 @@ export default function AdminDashboard({ stats, recentLinks, recentClicks, topMe
       {/* Charts + Activity */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="lg:col-span-2">
-          <TrendCharts />
+          <TrendCharts data={trendData} />
         </div>
         <div>
           <ActivityFeed initialClicks={recentClicks} />
         </div>
       </div>
+
+      {/* Geo distribution */}
+      <WorldHeatmap data={heatmapData} />
 
       {/* Leaderboard + Recent Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">

@@ -70,7 +70,13 @@ export default function MembersClient({ members: initialMembers, invites }: { me
 
     setInviting(false);
     if (error) { toast.error("Failed to send invite"); return; }
-    toast.success("Invite sent!", { description: `Invitation sent to ${inviteEmail}` });
+    const inviteUrl = `${window.location.origin}/invite?token=${encodeURIComponent(token)}`;
+    try {
+      await navigator.clipboard.writeText(inviteUrl);
+    } catch {
+      // Clipboard may be blocked; still show the link to the admin.
+    }
+    toast.success("Invite link created", { description: inviteUrl });
     setInviteOpen(false);
     setInviteEmail("");
   };

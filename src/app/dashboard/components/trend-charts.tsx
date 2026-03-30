@@ -4,7 +4,7 @@ import React from "react";
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { TrendingUp } from "lucide-react";
 
-// Generate mock trend data for demo
+// Generate mock trend data for demo/fallback
 function generateTrendData() {
   const now = new Date();
   return Array.from({ length: 14 }, (_, i) => {
@@ -18,7 +18,11 @@ function generateTrendData() {
   });
 }
 
-const data = generateTrendData();
+type TrendPoint = {
+  date: string;
+  clicks: number;
+  earnings: number;
+};
 
 const CustomTooltip = ({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
@@ -36,7 +40,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function TrendCharts() {
+export default function TrendCharts({ data }: { data?: TrendPoint[] }) {
+  const chartData = data || generateTrendData();
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2 mb-4">
@@ -45,7 +50,7 @@ export default function TrendCharts() {
         <span className="ml-auto text-xs text-muted-foreground">Last 14 days</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <AreaChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
+        <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
           <defs>
             <linearGradient id="colorClicks" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#7C3AED" stopOpacity={0.4} />

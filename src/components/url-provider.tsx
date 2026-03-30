@@ -27,10 +27,17 @@ export function UrlProvider({ children }: UrlProviderProps) {
 
   // Clone children and add the currentUrl as a hidden input
   const childrenWithUrl = React.Children.map(children, (child) => {
-    if (React.isValidElement(child) && child.type === 'form') {
-      return React.cloneElement(child, {}, [
-        ...React.Children.toArray(child.props.children),
-        <input key="site-url-input" type="hidden" name="site_url" value={currentUrl} />
+    if (React.isValidElement(child) && child.type === "form") {
+      // TS can't infer props for arbitrary React nodes; type the form element explicitly.
+      const formEl = child as React.ReactElement<{ children?: React.ReactNode }>;
+      return React.cloneElement(formEl, {}, [
+        ...React.Children.toArray(formEl.props.children),
+        <input
+          key="site-url-input"
+          type="hidden"
+          name="site_url"
+          value={currentUrl}
+        />,
       ]);
     }
     return child;

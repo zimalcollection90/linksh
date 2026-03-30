@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { createClient } from "../../../../supabase/client";
+import { useTheme } from "next-themes";
 import {
   User, Shield, Bell, Key, Globe, Palette, Copy, Check,
   Plus, Trash2, Eye, EyeOff, RefreshCw
@@ -36,6 +37,13 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const supabase = createClient();
+  const { setTheme } = useTheme();
+
+  useEffect(() => {
+    if (profile?.theme === "light" || profile?.theme === "dark") {
+      setTheme(profile.theme);
+    }
+  }, [profile?.theme, setTheme]);
 
   const handleSaveProfile = async () => {
     setSaving(true);
@@ -46,6 +54,8 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
         full_name: profile.full_name,
         username: profile.username,
         bio: profile.bio,
+        theme: profile.theme,
+        accent_color: profile.accent_color,
       })
       .eq("id", profile.id);
     setSaving(false);
@@ -346,7 +356,10 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
                     className={`p-4 rounded-xl border-2 transition-all flex flex-col items-center gap-2 ${
                       profile.theme === t ? "border-primary bg-primary/10" : "border-border hover:border-border/80"
                     }`}
-                    onClick={() => setProfile({ ...profile, theme: t })}
+                    onClick={() => {
+                      setProfile({ ...profile, theme: t });
+                      setTheme(t);
+                    }}
                   >
                     <div className={`w-8 h-8 rounded-lg ${t === "dark" ? "bg-slate-800" : "bg-gray-100"}`} />
                     <span className="text-sm capitalize">{t}</span>
