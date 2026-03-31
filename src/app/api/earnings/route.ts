@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
     .select("id, link_id, clicks, rate, amount, period_start, period_end, payment_status, paid_at, created_at")
     .order("created_at", { ascending: false });
 
-  query.eq("company_id", ctx.companyId);
+  // Admin sees all earnings; member sees own
   if (ctx.role === "member") {
     query.eq("user_id", ctx.userId);
   }

@@ -139,21 +139,18 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
       return;
     }
 
-    const { data: membership } = await supabase
-      .from("company_members")
-      .select("company_id, status")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false })
-      .limit(1)
+    // Check user status directly — no company dependency
+    const { data: userProfile } = await supabase
+      .from("users")
+      .select("status")
+      .eq("id", user.id)
       .single();
 
-    if (!membership?.company_id) {
-      toast.error("Company membership not found");
-      setLoading(false);
-      return;
-    }
-    if (membership.status !== "active") {
-      toast.error("Your account is pending admin approval");
+    if (userProfile?.status !== "active") {
+      const msg = userProfile?.status === "suspended"
+        ? "Your account has been suspended."
+        : "Your account is pending admin approval.";
+      toast.error(msg);
       setLoading(false);
       return;
     }
@@ -170,9 +167,7 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
       status: "active",
     };
 
-    // `password_hash` carries the raw password only for server-side hashing triggers.
-    // When editing and the password field is left blank, we don't send `password_hash`
-    // so the existing hash remains intact.
+    // password_hash carries the raw password for server-side hashing.
     if (isPasswordProtected) {
       if (password) payload.password_hash = password;
     } else {
@@ -189,7 +184,6 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
       error = result.error;
     } else {
       payload.user_id = user.id;
-      payload.company_id = membership.company_id;
       const result = await supabase.from("links").insert(payload);
       error = result.error;
     }

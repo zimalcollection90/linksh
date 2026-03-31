@@ -75,32 +75,15 @@ export default function LinksClient({ links: initialLinks, isAdmin }: { links: L
   });
 
   const refreshLinks = async () => {
-    const supabase = createClient();
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) return;
-    const { data: membership } = await supabase
-      .from("company_members")
-      .select("company_id")
-      .eq("user_id", user.id)
-      .eq("status", "active")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .single();
-    if (!membership?.company_id) return;
-    const query = isAdmin
-      ? supabase
-          .from("links")
-          .select("*, users(full_name, display_name, email)")
-          .eq("company_id", membership.company_id)
-          .order("created_at", { ascending: false })
-      : supabase
-          .from("links")
-          .select("*")
-          .eq("company_id", membership.company_id)
-          .eq("user_id", user.id)
-          .order("created_at", { ascending: false });
-    const { data } = await query;
-    if (data) setLinks(data);
+    try {
+      const res = await fetch("/api/links", { cache: "no-store" });
+      const json = await res.json();
+      if (res.ok && Array.isArray(json?.links)) {
+        setLinks(json.links);
+      }
+    } catch {
+      // best-effort
+    }
   };
 
   return (

@@ -10,7 +10,7 @@ export default async function MembersPage() {
   const { data: profile } = await supabase
     .from("users")
     .select("id, role, status")
-    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+    .eq("id", user.id)
     .single();
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
@@ -18,23 +18,18 @@ export default async function MembersPage() {
     return redirect("/dashboard");
   }
 
+  // Fetch all members globally — no company filtering
   const { data: members } = await supabase
     .from("users")
-    .select("id, user_id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, last_active_at, last_seen_ip")
     .order("created_at", { ascending: false });
 
-  const { data: invites } = await supabase
-    .from("invites")
-    .select("*")
-    .order("created_at", { ascending: false });
-
+  // Link stats per user
   const { data: links } = await supabase
     .from("links")
     .select("user_id, click_count");
-  const { data: earnings } = await supabase
-    .from("earnings")
-    .select("user_id, amount");
 
+  // Click stats per user
   const { data: memberClickStats } = await supabase
     .from("click_events")
     .select("user_id, is_bot, is_filtered, is_unique")
@@ -43,7 +38,9 @@ export default async function MembersPage() {
   const clickStatsByUser: Record<string, any> = {};
   for (const s of memberClickStats || []) {
     if (!s.user_id) continue;
-    const bucket = clickStatsByUser[s.user_id] || { real_clicks: 0, unique_users: 0, bot_excluded: 0, filtered_clicks: 0 };
+    const bucket = clickStatsByUser[s.user_id] || {
+      real_clicks: 0, unique_users: 0, bot_excluded: 0, filtered_clicks: 0,
+    };
     if (s.is_bot) bucket.bot_excluded += 1;
     if (s.is_filtered) bucket.filtered_clicks += 1;
     if (!s.is_bot && !s.is_filtered) bucket.real_clicks += 1;
@@ -59,25 +56,17 @@ export default async function MembersPage() {
     linkStats[l.user_id].totalClicks += l.click_count || 0;
   }
 
-  const earningStats: Record<string, number> = {};
-  for (const e of earnings || []) {
-    if (!e.user_id) continue;
-    earningStats[e.user_id] = (earningStats[e.user_id] || 0) + (e.amount || 0);
-  }
-
   const membersWithStats = (members || []).map((m: any) => ({
     ...m,
     role: m.role || "member",
     status: m.status || "pending",
-    created_at: m.created_at,
     totalClicks: linkStats[m.id]?.totalClicks || 0,
     linkCount: linkStats[m.id]?.linkCount || 0,
-    totalEarnings: earningStats[m.id] || 0,
     realClicks: Number(clickStatsByUser[m.id]?.real_clicks) || 0,
     uniqueUsers: Number(clickStatsByUser[m.id]?.unique_users) || 0,
     botExcluded: Number(clickStatsByUser[m.id]?.bot_excluded) || 0,
     filteredClicks: Number(clickStatsByUser[m.id]?.filtered_clicks) || 0,
   }));
 
-  return <MembersClient members={membersWithStats} invites={invites || []} />;
+  return <MembersClient members={membersWithStats} />;
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../../supabase/admin";
 import { createClient } from "../../../../../supabase/server";
-import { getApiContext, requireActiveMembership, requireAdmin } from "../../_lib/api-auth";
+import { getApiContext, requireAdmin, requireActiveMembership } from "../../_lib/api-auth";
 
 export async function GET(req: NextRequest) {
   let ctx;
@@ -21,42 +21,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: e?.message || "Failed to initialize database client" }, { status: 500 });
   }
 
-  const usersQuery = (columns: string) =>
-    supabase
-      .from("users")
-      .select(columns)
-      .order("created_at", { ascending: false });
-
-  let { data: users, error: uErr } = await usersQuery(
-    "id, user_id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip"
-  );
-  if (uErr) {
-    // Fallback for environments where optional profile columns are not migrated yet.
-    const fallback = await usersQuery(
-      "id, user_id, full_name, display_name, email, avatar_url, status, role, created_at"
-    );
-    users = fallback.data;
-    uErr = fallback.error;
-  }
+  // Fetch all users directly — no company filtering
+  const { data: users, error: uErr } = await supabase
+    .from("users")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
+    .order("created_at", { ascending: false });
 
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 400 });
 
-  const { data: links, error: lErr } = await supabase
+  const userIds = (users || []).map((u: any) => u.id);
+
+  const { data: links } = await supabase
     .from("links")
     .select("user_id, click_count")
-    .in("user_id", (users || []).map((u: any) => u.id));
-  if (lErr) return NextResponse.json({ error: lErr.message }, { status: 400 });
+    .in("user_id", userIds);
 
-  const { data: earnings, error: eErr } = await supabase
-    .from("earnings")
-    .select("user_id, amount")
-    .in("user_id", (users || []).map((u: any) => u.id));
-  if (eErr) return NextResponse.json({ error: eErr.message }, { status: 400 });
-
+  // Click stats — skip earnings if it causes issues
   const { data: memberClickStats } = await supabase
     .from("click_events")
     .select("user_id, is_bot, is_filtered, is_unique")
-    .in("user_id", (users || []).map((u: any) => u.id))
+    .in("user_id", userIds)
     .limit(50000);
 
   const clickStatsByUser: Record<string, any> = {};
@@ -83,12 +67,6 @@ export async function GET(req: NextRequest) {
     linkStats[l.user_id].totalClicks += l.click_count || 0;
   }
 
-  const earningStats: Record<string, number> = {};
-  for (const e of earnings || []) {
-    if (!e.user_id) continue;
-    earningStats[e.user_id] = (earningStats[e.user_id] || 0) + (e.amount || 0);
-  }
-
   const members = (users || []).map((u: any) => ({
     ...u,
     role: u.role === "admin" || u.role === "super_admin" ? u.role : "member",
@@ -96,8 +74,7 @@ export async function GET(req: NextRequest) {
     membership_created_at: u.created_at,
     linkCount: linkStats[u.id]?.linkCount || 0,
     totalClicks: linkStats[u.id]?.totalClicks || 0,
-    totalEarnings: earningStats[u.id] || 0,
-    isInCompany: true,
+    totalEarnings: 0,
     realClicks: Number(clickStatsByUser[u.id]?.real_clicks) || 0,
     uniqueUsers: Number(clickStatsByUser[u.id]?.unique_users) || 0,
     botExcluded: Number(clickStatsByUser[u.id]?.bot_excluded) || 0,
@@ -117,6 +94,7 @@ export async function PATCH(req: NextRequest) {
     if (e instanceof Response) return e;
     return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
   }
+
   let supabase: any;
   try {
     supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
@@ -142,8 +120,17 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "userId or userIds is required" }, { status: 400 });
   }
 
+  // Gracefully fallback to the normal client if service role key is missing
+  let actionClient = supabase;
+  try {
+    actionClient = createAdminClient();
+  } catch (err: any) {
+    console.warn("Admin client initialization failed, falling back to session client:", err.message);
+  }
+
   if (action === "set_status") {
     const requested = (body?.status || "").toString().toLowerCase();
+    // Normalize: "approve" → "active", "reject" → "suspended"
     const status =
       requested === "approve" ? "active" :
       requested === "reject" ? "suspended" :
@@ -151,8 +138,9 @@ export async function PATCH(req: NextRequest) {
     if (!["active", "pending", "suspended"].includes(status)) {
       return NextResponse.json({ error: "Invalid status" }, { status: 400 });
     }
+    
     for (const id of targetIds) {
-      const { error } = await supabase
+      const { error } = await actionClient
         .from("users")
         .update({ status, updated_at: new Date().toISOString() })
         .eq("id", id);
@@ -169,7 +157,7 @@ export async function PATCH(req: NextRequest) {
     if (!["admin", "member"].includes(role)) {
       return NextResponse.json({ error: "Invalid role" }, { status: 400 });
     }
-    const { error } = await supabase
+    const { error } = await actionClient
       .from("users")
       .update({ role, updated_at: new Date().toISOString() })
       .eq("id", targetIds[0]);
@@ -177,6 +165,22 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "delete_user") {
+    if (targetIds.length > 1) {
+      return NextResponse.json({ error: "Bulk delete not supported" }, { status: 400 });
+    }
+    const { error } = await actionClient
+      .from("users")
+      .delete()
+      .eq("id", targetIds[0]);
+    if (error) {
+       if (error.code === '42501') {
+           return NextResponse.json({ error: "Service Role Key required: Add SUPABASE_SERVICE_ROLE_KEY to your .env file to delete users" }, { status: 403 });
+       }
+       return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
 }
-

@@ -24,7 +24,6 @@ export async function GET(req: NextRequest) {
     .select(
       "id, link_id, clicks, rate, amount, period_start, period_end, payment_status, paid_at, created_at"
     )
-    .eq("company_id", ctx.companyId)
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
@@ -43,7 +42,7 @@ export async function GET(req: NextRequest) {
   ];
 
   const csv = toCsv(data || [], headers);
-  const filename = `earnings-${ctx.companyId}.csv`;
+  const filename = `earnings-export-${new Date().toISOString().slice(0, 10)}.csv`;
 
   return new NextResponse(csv, {
     status: 200,

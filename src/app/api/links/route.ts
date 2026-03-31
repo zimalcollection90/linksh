@@ -1,12 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../supabase/admin";
-import { getApiContext, requireActiveMembership } from "../_lib/api-auth";
+import { getApiContext, requireActiveUserResponse, requireAdmin } from "../_lib/api-auth";
 import { createClient } from "../../../../supabase/server";
 
 export async function GET(req: NextRequest) {
-  const ctx = await getApiContext(req);
+  let ctx;
+  try {
+    ctx = await getApiContext(req);
+  } catch (e: any) {
+    if (e instanceof Response) return e;
+    return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
+  }
 
-  // Prefer RLS/session mode client when possible.
+  const denied = requireActiveUserResponse(ctx);
+  if (denied) return denied;
+
   const supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
 
   const { searchParams } = new URL(req.url);
@@ -35,10 +43,17 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ links: data || [] });
 }
 
-// POST create is intentionally not implemented yet in this phased rollout.
 export async function POST(req: NextRequest) {
-  const ctx = await getApiContext(req);
-  requireActiveMembership(ctx);
+  let ctx;
+  try {
+    ctx = await getApiContext(req);
+  } catch (e: any) {
+    if (e instanceof Response) return e;
+    return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
+  }
+
+  const denied = requireActiveUserResponse(ctx);
+  if (denied) return denied;
 
   let body: any;
   try {
@@ -50,11 +65,14 @@ export async function POST(req: NextRequest) {
   const destinationUrl = (body?.destination_url || "").toString().trim();
   const shortCode = (body?.short_code || "").toString().trim();
   if (!destinationUrl || !shortCode) {
-    return NextResponse.json({ error: "destination_url and short_code are required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "destination_url and short_code are required" },
+      { status: 400 }
+    );
   }
 
+  // No company_id — just user_id
   const payload = {
-    company_id: ctx.companyId,
     user_id: ctx.userId,
     destination_url: destinationUrl,
     short_code: shortCode,
@@ -80,4 +98,3 @@ export async function POST(req: NextRequest) {
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   return NextResponse.json({ link: data }, { status: 201 });
 }
-

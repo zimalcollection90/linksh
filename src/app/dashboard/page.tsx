@@ -2,6 +2,7 @@ import { createClient } from "../../../supabase/server";
 import AdminDashboard from "./components/admin-dashboard";
 import MemberDashboard from "./components/member-dashboard";
 import Link from "next/link";
+import { Clock, ShieldOff } from "lucide-react";
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -12,23 +13,62 @@ export default async function Dashboard() {
   const { data: profile } = await supabase
     .from("users")
     .select("*")
-    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
+    .eq("id", user.id)
     .single();
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
   const userId = profile?.id;
+  const status = profile?.status ?? "pending";
 
-  if (profile?.status !== "active" && !isAdmin) {
+  // Pending users — show waiting screen
+  if (status === "pending" && !isAdmin) {
     return (
-      <div className="max-w-xl mx-auto mt-16 rounded-xl border border-border bg-card p-6">
-        <h1 className="text-xl font-bold">Account pending approval</h1>
-        <p className="text-sm text-muted-foreground mt-2">
-          Your account is waiting for admin approval. You can sign in, but link creation and analytics are locked until your status is active.
-        </p>
-        <div className="mt-4">
-          <Link href="/dashboard/settings" className="text-sm text-primary hover:underline">
-            Open settings
-          </Link>
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="max-w-md w-full mx-auto rounded-2xl border border-amber-500/20 bg-amber-500/5 p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center mx-auto mb-4">
+            <Clock className="w-8 h-8 text-amber-400" />
+          </div>
+          <h1 className="text-xl font-bold mb-2" style={{ fontFamily: "Syne, sans-serif" }}>
+            Waiting for Admin Approval
+          </h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Your account has been created and is pending review. An admin will approve
+            your account shortly. You can sign in but link creation and analytics are
+            locked until you&apos;re approved.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-amber-400">
+            <Clock className="w-3.5 h-3.5" />
+            <span>Status: Pending Approval</span>
+          </div>
+          <div className="mt-4">
+            <Link href="/dashboard/settings" className="text-xs text-muted-foreground hover:text-primary underline underline-offset-4">
+              Update profile settings
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Suspended users — show blocked screen
+  if (status === "suspended" && !isAdmin) {
+    return (
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="max-w-md w-full mx-auto rounded-2xl border border-red-500/20 bg-red-500/5 p-8 text-center">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+            <ShieldOff className="w-8 h-8 text-red-400" />
+          </div>
+          <h1 className="text-xl font-bold mb-2" style={{ fontFamily: "Syne, sans-serif" }}>
+            Account Suspended
+          </h1>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            Your account has been suspended by an administrator. You cannot create links
+            or access analytics. Please contact support if you believe this is a mistake.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-2 text-xs text-red-400">
+            <ShieldOff className="w-3.5 h-3.5" />
+            <span>Status: Suspended</span>
+          </div>
         </div>
       </div>
     );
@@ -57,14 +97,8 @@ export default async function Dashboard() {
     }
   } else {
     const [linksRes, myLinksRes, realClicksRes] = await Promise.all([
-      supabase
-        .from("links")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId),
-      supabase
-        .from("links")
-        .select("click_count")
-        .eq("user_id", userId),
+      supabase.from("links").select("id", { count: "exact", head: true }).eq("user_id", userId),
+      supabase.from("links").select("click_count").eq("user_id", userId),
       userId ? supabase.rpc("get_user_click_stats", { p_user_id: userId }) : Promise.resolve({ data: null }),
     ]);
     totalLinks = linksRes.count || 0;
@@ -107,7 +141,7 @@ export default async function Dashboard() {
     const { data: heatmapClicks } = await supabase
       .from("click_events")
       .select("country_code")
-    .order("clicked_at", { ascending: false })
+      .order("clicked_at", { ascending: false })
       .limit(2000);
 
     const counts: Record<string, number> = {};
@@ -116,7 +150,6 @@ export default async function Dashboard() {
       if (!code) continue;
       counts[code] = (counts[code] || 0) + 1;
     }
-
     heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
 
     const now = new Date();
@@ -151,14 +184,16 @@ export default async function Dashboard() {
   if (isAdmin) {
     const { data: members } = await supabase
       .from("users")
-      .select("id, user_id, full_name, display_name, email, avatar_url, status, role")
+      .select("id, full_name, display_name, email, avatar_url, status, role")
       .order("created_at", { ascending: false })
       .limit(8);
-    const clickStatsByUser: Record<string, any> = {};
+
     const memberIds = (members || []).map((m: any) => m.id);
     const { data: memberClicks } = memberIds.length
       ? await supabase.from("click_events").select("user_id, is_bot, is_filtered").in("user_id", memberIds).limit(50000)
       : { data: [] as any[] };
+
+    const clickStatsByUser: Record<string, any> = {};
     for (const c of memberClicks || []) {
       if (!c.user_id) continue;
       const bucket = clickStatsByUser[c.user_id] || { real_clicks: 0 };
@@ -181,7 +216,6 @@ export default async function Dashboard() {
             totalClicks: clicks,
             linkCount: links?.length || 0,
             realClicks: Number(clickStatsByUser[m.id]?.real_clicks) || 0,
-            botExcluded: Number(clickStatsByUser[m.id]?.bot_excluded) || 0,
           };
         })
       );

@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   }
   const { data, error } = await supabase
     .from("invites")
-    .select("id, email, role, token, status, expires_at, created_at, company_id, invited_by")
+    .select("id, email, role, token, status, expires_at, created_at, invited_by")
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
