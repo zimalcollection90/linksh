@@ -432,7 +432,7 @@ export default function MembersClient({ members: initialMembers }: { members: an
                     {/* Joined */}
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-xs text-muted-foreground">
-                        {member.created_at
+                        {member.created_at && !isNaN(new Date(member.created_at).getTime())
                           ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true })
                           : "—"}
                       </span>
@@ -441,7 +441,7 @@ export default function MembersClient({ members: initialMembers }: { members: an
                     {/* Last Active */}
                     <td className="px-4 py-3 hidden xl:table-cell">
                       <span className="text-xs text-muted-foreground">
-                        {member.last_active_at
+                        {member.last_active_at && !isNaN(new Date(member.last_active_at).getTime())
                           ? formatDistanceToNow(new Date(member.last_active_at), { addSuffix: true })
                           : "Never"}
                       </span>

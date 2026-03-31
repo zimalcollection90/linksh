@@ -128,14 +128,12 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
       value: stats.totalLinks,
       icon: Link2,
       color: "purple" as const,
-      trend: 12,
     },
     {
       title: "Total Clicks",
       value: stats.totalClicks,
       icon: MousePointerClick,
       color: "teal" as const,
-      trend: 8,
     },
     ...(hasRealClickData
       ? [
@@ -162,7 +160,6 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
             value: stats.activeMembers || 0,
             icon: Users,
             color: "green" as const,
-            trend: 5,
           },
         ]
       : []),
@@ -171,7 +168,6 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
       value: `$${(stats.totalEarnings || 0).toFixed(2)}`,
       icon: DollarSign,
       color: "amber" as const,
-      trend: 0,
     },
   ];
 

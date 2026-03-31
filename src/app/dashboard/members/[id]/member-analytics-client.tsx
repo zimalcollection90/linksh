@@ -15,8 +15,18 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow, format } from "date-fns";
 import { cn } from "@/lib/utils";
+import WorldHeatmap from "../../components/world-heatmap";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#F59E0B"];
+
+function getFlagEmoji(countryCode?: string) {
+  if (!countryCode || countryCode === "Unknown" || countryCode.length !== 2) return "🌐";
+  const codePoints = countryCode
+    .toUpperCase()
+    .split("")
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
 
 interface MemberAnalyticsClientProps {
   member: any;
@@ -29,7 +39,7 @@ interface MemberAnalyticsClientProps {
   };
   dailyClicks: Array<{ day: string; total: number; real: number; unique: number; bots: number }>;
   links: any[];
-  countryData: Array<{ name: string; value: number }>;
+  countryData: Array<{ name: string; value: number; code?: string }>;
   deviceData: Array<{ name: string; value: number }>;
   browserData: Array<{ name: string; value: number }>;
   earnings: any[];
@@ -66,7 +76,7 @@ export default function MemberAnalyticsClient({
 
   // Format daily clicks for chart
   const chartData = dailyClicks.map(d => ({
-    date: d.day ? format(new Date(d.day), "MMM d") : d.day,
+    date: d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "MMM d") : (d.day || "Unknown"),
     Total: d.total,
     Real: d.real,
     Unique: d.unique,
@@ -109,7 +119,7 @@ export default function MemberAnalyticsClient({
         <div className="text-right hidden sm:block">
           <p className="text-xs text-muted-foreground">Joined</p>
           <p className="text-sm font-medium">
-            {member.created_at ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true }) : "—"}
+            {member.created_at && !isNaN(new Date(member.created_at).getTime()) ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true }) : "—"}
           </p>
         </div>
       </div>
@@ -273,6 +283,7 @@ export default function MemberAnalyticsClient({
               <thead>
                 <tr className="border-b border-border bg-muted/30">
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Link</th>
+                  <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden sm:table-cell">Destination</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Status</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Clicks</th>
                   <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">Created</th>
@@ -299,8 +310,11 @@ export default function MemberAnalyticsClient({
                         <p className="text-sm font-medium">{link.title || `/${link.short_code}`}</p>
                         <p className="text-xs text-muted-foreground font-mono">{link.short_code}</p>
                       </td>
+                      <td className="px-4 py-3 hidden sm:table-cell">
+                        <p className="text-xs text-muted-foreground truncate max-w-[150px]">{link.destination_url}</p>
+                      </td>
                       <td className="px-4 py-3">
-                        <Badge variant="outline" className={`text-xs ${link.status === "active" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : "bg-muted text-muted-foreground"}`}>
+                        <Badge variant="outline" className={`text-xs ${link.status === "active" ? "bg-cyan-500/10 text-cyan-400 border-cyan-500/20" : link.status === "expired" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : "bg-muted text-muted-foreground"}`}>
                           {link.status}
                         </Badge>
                       </td>
@@ -309,7 +323,7 @@ export default function MemberAnalyticsClient({
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
                         <span className="text-xs text-muted-foreground">
-                          {link.created_at ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "—"}
+                          {link.created_at && !isNaN(new Date(link.created_at).getTime()) ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "—"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -327,20 +341,24 @@ export default function MemberAnalyticsClient({
       )}
 
       {activeTab === "geo" && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Countries */}
+        <div className="space-y-4">
+          <WorldHeatmap data={countryData as any[]} />
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Countries */}
           <div className="rounded-xl border border-border bg-card p-5">
             <div className="flex items-center gap-2 mb-4">
               <Globe className="w-4 h-4 text-primary" />
               <h3 className="font-semibold text-sm">Countries (Real Clicks)</h3>
             </div>
             {countryData.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-8">No geo data yet</p>
+              <p className="text-sm text-muted-foreground text-center py-8">No clicks recorded yet</p>
             ) : (
               <div className="space-y-2">
                 {countryData.map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
-                    <span className="text-sm w-28 text-muted-foreground truncate">{item.name}</span>
+                    <span className="text-lg leading-none">{getFlagEmoji(item.code)}</span>
+                    <span className="text-sm w-20 text-muted-foreground truncate">{item.name}</span>
                     <div className="flex-1 bg-muted rounded-full h-2">
                       <div
                         className="h-2 rounded-full bg-primary transition-all duration-500"
@@ -402,6 +420,7 @@ export default function MemberAnalyticsClient({
               </ResponsiveContainer>
             )}
           </div>
+          </div>
         </div>
       )}
 
@@ -451,7 +470,7 @@ export default function MemberAnalyticsClient({
                     [...dailyClicks].reverse().slice(0, 14).map((d) => (
                       <tr key={d.day} className="border-b border-border/50 last:border-0">
                         <td className="py-2 text-xs text-muted-foreground">
-                          {d.day ? format(new Date(d.day), "EEE, MMM d") : d.day}
+                          {d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "EEE, MMM d") : (d.day || "Unknown")}
                         </td>
                         <td className="py-2 text-right text-xs">{d.total}</td>
                         <td className="py-2 text-right text-xs text-green-400">{d.real}</td>

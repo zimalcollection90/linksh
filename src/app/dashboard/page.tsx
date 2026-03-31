@@ -151,34 +151,64 @@ export default async function Dashboard() {
       counts[code] = (counts[code] || 0) + 1;
     }
     heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
-
-    const now = new Date();
-    const start = new Date(now);
-    start.setDate(start.getDate() - 13);
-
-    const { data: trendClicks } = await supabase
-      .from("click_events")
-      .select("clicked_at")
-      .gte("clicked_at", start.toISOString())
-      .order("clicked_at", { ascending: true })
-      .limit(5000);
-
-    const dayCounts: Record<string, number> = {};
-    for (const row of trendClicks || []) {
-      const ts = row?.clicked_at ? new Date(row.clicked_at) : null;
-      if (!ts) continue;
-      const key = ts.toISOString().slice(0, 10);
-      dayCounts[key] = (dayCounts[key] || 0) + 1;
-    }
-
-    trendData = Array.from({ length: 14 }, (_, i) => {
-      const d = new Date(start);
-      d.setDate(start.getDate() + i);
-      const key = d.toISOString().slice(0, 10);
-      const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      return { date: label, clicks: dayCounts[key] || 0, earnings: 0 };
-    });
   }
+
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(start.getDate() - 13);
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  let trendQuery = supabase
+    .from("click_events")
+    .select("clicked_at")
+    .gte("clicked_at", start.toISOString())
+    .order("clicked_at", { ascending: true })
+    .limit(5000);
+
+  if (!isAdmin && userId) {
+    trendQuery = trendQuery.eq("user_id", userId);
+  }
+
+  const { data: trendClicks } = await trendQuery;
+  const dayCounts: Record<string, number> = {};
+  for (const row of trendClicks || []) {
+    const ts = row?.clicked_at ? new Date(row.clicked_at) : null;
+    if (!ts) continue;
+    const key = ts.toISOString().slice(0, 10);
+    dayCounts[key] = (dayCounts[key] || 0) + 1;
+  }
+
+  let trendEarningsQuery = supabase
+    .from("earnings")
+    .select("created_at, amount")
+    .gte("created_at", start.toISOString())
+    .order("created_at", { ascending: true })
+    .limit(5000);
+
+  if (!isAdmin && userId) {
+    trendEarningsQuery = trendEarningsQuery.eq("user_id", userId);
+  }
+
+  const { data: trendEarnings } = await trendEarningsQuery;
+  const dayEarnings: Record<string, number> = {};
+  for (const row of trendEarnings || []) {
+    const ts = row?.created_at ? new Date(row.created_at) : null;
+    if (!ts) continue;
+    const key = ts.toISOString().slice(0, 10);
+    dayEarnings[key] = (dayEarnings[key] || 0) + Number(row.amount || 0);
+  }
+
+  trendData = Array.from({ length: 14 }, (_, i) => {
+    const d = new Date(start);
+    d.setDate(start.getDate() + i);
+    const key = d.toISOString().slice(0, 10);
+    const label = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return { 
+      date: label, 
+      clicks: dayCounts[key] || 0, 
+      earnings: parseFloat((dayEarnings[key] || 0).toFixed(2)) 
+    };
+  });
 
   let topMembers: any[] = [];
   if (isAdmin) {
@@ -231,6 +261,22 @@ export default async function Dashboard() {
 
   const stats = { totalLinks, totalClicks, activeMembers, totalEarnings, realClicks, uniqueUsers, filteredClicks, botExcluded };
 
+  // Fetch monthly goal and monthly clicks for progress bar
+  const [goalRes, monthlyClicksRes] = await Promise.all([
+    supabase.from("site_settings").select("value").eq("key", "monthly_click_goal").single(),
+    !isAdmin && userId 
+      ? supabase.from("click_events")
+          .select("id", { count: "exact", head: true })
+          .eq("user_id", userId)
+          .gte("clicked_at", monthStart)
+          .eq("is_bot", false)
+          .eq("is_filtered", false)
+      : Promise.resolve({ count: 0 })
+  ]);
+
+  const monthlyGoal = parseInt(goalRes.data?.value || "1000");
+  const monthlyClicks = monthlyClicksRes.count || 0;
+
   if (isAdmin) {
     return (
       <AdminDashboard
@@ -241,6 +287,7 @@ export default async function Dashboard() {
         profile={profile}
         heatmapData={heatmapData}
         trendData={trendData}
+        monthlyGoal={monthlyGoal}
       />
     );
   }
@@ -250,6 +297,9 @@ export default async function Dashboard() {
       stats={stats}
       recentLinks={recentLinks || []}
       profile={profile}
+      trendData={trendData}
+      monthlyGoal={monthlyGoal}
+      monthlyClicks={monthlyClicks}
     />
   );
 }

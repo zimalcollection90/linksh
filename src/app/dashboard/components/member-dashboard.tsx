@@ -17,12 +17,15 @@ interface MemberDashboardProps {
   };
   recentLinks: any[];
   profile: any;
+  trendData?: Array<{ date: string; clicks: number; earnings: number }>;
+  monthlyGoal?: number;
+  monthlyClicks?: number;
 }
 
-export default function MemberDashboard({ stats, recentLinks, profile }: MemberDashboardProps) {
+export default function MemberDashboard({ stats, recentLinks, profile, trendData, monthlyGoal = 1000, monthlyClicks = 0 }: MemberDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "there";
-  const goalClicks = 1000;
-  const progress = Math.min((stats.totalClicks / goalClicks) * 100, 100);
+  const goalClicks = monthlyGoal;
+  const progress = Math.min((monthlyClicks / goalClicks) * 100, 100);
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">
@@ -51,19 +54,19 @@ export default function MemberDashboard({ stats, recentLinks, profile }: MemberD
         <div className="flex items-center gap-2 mb-4">
           <Target className="w-4 h-4 text-primary" />
           <h3 className="font-semibold text-sm">Monthly Goal</h3>
-          <span className="ml-auto text-xs text-muted-foreground">{stats.totalClicks.toLocaleString()} / {goalClicks.toLocaleString()} clicks</span>
+          <span className="ml-auto text-xs text-muted-foreground">{monthlyClicks.toLocaleString()} / {goalClicks.toLocaleString()} clicks</span>
         </div>
         <Progress value={progress} className="h-2 bg-muted" />
         <p className="text-xs text-muted-foreground mt-2">
           {progress >= 100
             ? "🎉 Goal achieved! Keep it up!"
-            : `${(goalClicks - stats.totalClicks).toLocaleString()} more clicks to reach your goal`}
+            : `${(goalClicks - monthlyClicks).toLocaleString()} more clicks to reach your goal`}
         </p>
       </motion.div>
 
       {/* Charts + Links */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <TrendCharts />
+        <TrendCharts data={trendData} />
         <RecentLinks links={recentLinks} />
       </div>
     </div>

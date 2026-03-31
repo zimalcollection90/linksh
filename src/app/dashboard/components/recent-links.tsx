@@ -7,7 +7,6 @@ import { Copy, Check, ExternalLink, QrCode, BarChart2, MoreHorizontal } from "lu
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
-import { formatDistanceToNow } from "date-fns";
 
 interface LinkItem {
   id: string;

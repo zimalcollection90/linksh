@@ -24,6 +24,7 @@ export default async function LinksPage() {
     ? supabase
         .from("links")
         .select("*, users(full_name, display_name, email)")
+        .eq("user_id", profile?.id ?? user.id)
         .order("created_at", { ascending: false })
     : supabase
         .from("links")

@@ -189,7 +189,9 @@ export default function LinksClient({ links: initialLinks, isAdmin }: { links: L
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-xs text-muted-foreground">
-                        {formatDistanceToNow(new Date(link.created_at), { addSuffix: true })}
+                        {link.created_at && !isNaN(new Date(link.created_at).getTime())
+                          ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true })
+                          : "—"}
                       </span>
                     </td>
                     {isAdmin && (

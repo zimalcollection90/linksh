@@ -9,8 +9,18 @@ import {
 import { BarChart2, Globe, Monitor, Smartphone, Link2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import Link from "next/link";
+import WorldHeatmap from "../components/world-heatmap";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#818CF8"];
+
+function getFlagEmoji(countryCode: string) {
+  if (!countryCode || countryCode === "Unknown" || countryCode.length !== 2) return "🌐";
+  const codePoints = countryCode
+    .toUpperCase()
+    .split("")
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
 
 function processClicksByDay(clicks: any[]) {
   const days = Array.from({ length: 30 }, (_, i) => {
@@ -25,15 +35,38 @@ function processClicksByDay(clicks: any[]) {
   return days;
 }
 
+function processCountryData(clicks: any[]) {
+  const counts: Record<string, { value: number; code: string; name: string }> = {};
+  clicks.forEach((c) => {
+    const name = c.country || "Unknown";
+    const code = c.country_code || "Unknown";
+    if (!counts[name]) counts[name] = { value: 0, code, name };
+    counts[name].value++;
+  });
+  return Object.values(counts)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 8);
+}
+
+function processHeatmapData(clicks: any[]) {
+  const counts: Record<string, number> = {};
+  clicks.forEach((c) => {
+    if (c.country_code && c.country_code !== "Unknown") {
+      counts[c.country_code] = (counts[c.country_code] || 0) + 1;
+    }
+  });
+  return Object.entries(counts).map(([code, value]) => ({ code, value }));
+}
+
 function processGrouped(clicks: any[], field: string) {
   const counts: Record<string, number> = {};
   clicks.forEach((c) => {
-    const val = c[field] || "Unknown";
+    const val = (c[field] as string) || "Unknown";
     counts[val] = (counts[val] || 0) + 1;
   });
   return Object.entries(counts)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
+    .slice(0, 6)
     .map(([name, value]) => ({ name, value }));
 }
 
@@ -47,10 +80,13 @@ function processClicksByMonth(clicks: any[]) {
   return Object.keys(counts)
     .sort()
     .slice(-6)
-    .map((k) => ({
-      month: format(new Date(`${k}-01T00:00:00Z`), "MMM yyyy"),
-      clicks: counts[k],
-    }));
+    .map((k) => {
+      const d = new Date(`${k}-01T00:00:00Z`);
+      return {
+        month: !isNaN(d.getTime()) ? format(d, "MMM yyyy") : k,
+        clicks: counts[k],
+      };
+    });
 }
 
 export default function AnalyticsClient({
@@ -66,7 +102,8 @@ export default function AnalyticsClient({
 }) {
   const clicksByDay = processClicksByDay(clicks);
   const clicksByMonth = processClicksByMonth(clicks);
-  const byCountry = processGrouped(clicks, "country");
+  const byCountry = processCountryData(clicks);
+  const heatmapData = processHeatmapData(clicks);
   const byDevice = processGrouped(clicks, "device_type");
   const byBrowser = processGrouped(clicks, "browser");
   const byOs = processGrouped(clicks, "os");
@@ -169,6 +206,9 @@ export default function AnalyticsClient({
         </div>
       )}
 
+      {/* World Map Heatmap */}
+      <WorldHeatmap data={heatmapData} />
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Top Countries */}
         <div className="rounded-xl border border-border bg-card p-5">
@@ -177,11 +217,12 @@ export default function AnalyticsClient({
             <h3 className="font-semibold text-sm">Top Countries</h3>
           </div>
           {byCountry.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No data yet</p>
+            <p className="text-sm text-muted-foreground text-center py-8">No clicks recorded yet</p>
           ) : (
             <div className="space-y-2.5">
-              {byCountry.map((item, i) => (
+              {byCountry.map((item) => (
                 <div key={item.name} className="flex items-center gap-2">
+                  <span className="text-lg leading-none">{getFlagEmoji(item.code)}</span>
                   <span className="text-xs text-muted-foreground w-24 truncate">{item.name}</span>
                   <div className="flex-1 bg-muted rounded-full h-1.5">
                     <div className="h-1.5 rounded-full bg-primary transition-all duration-700" style={{ width: `${(item.value / (byCountry[0]?.value || 1)) * 100}%` }} />
@@ -205,14 +246,14 @@ export default function AnalyticsClient({
             <div className="flex items-center gap-4">
               <PieChart width={140} height={140}>
                 <Pie data={byDevice} cx={65} cy={65} innerRadius={40} outerRadius={60} paddingAngle={3} dataKey="value">
-                  {byDevice.map((_, index) => (
+                  {byDevice.map((_: any, index: number) => (
                     <Cell key={index} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
               </PieChart>
               <div className="space-y-2 flex-1">
-                {byDevice.map((item, i) => (
+                {byDevice.map((item: any, i: number) => (
                   <div key={item.name} className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
                     <span className="text-xs text-muted-foreground capitalize flex-1">{item.name}</span>

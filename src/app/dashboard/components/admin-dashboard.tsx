@@ -22,6 +22,7 @@ interface AdminDashboardProps {
   profile: any;
   heatmapData: Array<{ code: string; value: number }>;
   trendData?: Array<{ date: string; clicks: number; earnings: number }>;
+  monthlyGoal?: number;
 }
 
 export default function AdminDashboard({
@@ -32,6 +33,7 @@ export default function AdminDashboard({
   profile,
   heatmapData,
   trendData,
+  monthlyGoal,
 }: AdminDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "Admin";
 

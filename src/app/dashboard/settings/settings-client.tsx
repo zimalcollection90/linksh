@@ -13,18 +13,25 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { createClient } from "../../../../supabase/client";
 import { useTheme } from "next-themes";
+import { updateMonthlyGoalAction } from "@/app/actions";
 import {
   User, Shield, Bell, Key, Globe, Palette, Copy, Check,
-  Plus, Trash2, Eye, EyeOff, RefreshCw
+  Plus, Trash2, Eye, EyeOff, RefreshCw, Target
 } from "lucide-react";
 
 interface SettingsClientProps {
   profile: any;
   apiKeys: any[];
   ipExclusions: any[];
+  initialMonthlyGoal?: number;
 }
 
-export default function SettingsClient({ profile: initialProfile, apiKeys: initialApiKeys, ipExclusions: initialExclusions }: SettingsClientProps) {
+export default function SettingsClient({ 
+  profile: initialProfile, 
+  apiKeys: initialApiKeys, 
+  ipExclusions: initialExclusions,
+  initialMonthlyGoal = 1000 
+}: SettingsClientProps) {
   const [profile, setProfile] = useState(initialProfile || {});
   const [saving, setSaving] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
@@ -36,6 +43,8 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
   const [newIp, setNewIp] = useState("");
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [monthlyGoal, setMonthlyGoal] = useState(initialMonthlyGoal);
+  const [updatingGoal, setUpdatingGoal] = useState(false);
   const supabase = createClient();
   const { setTheme } = useTheme();
 
@@ -119,6 +128,17 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
     setIpExclusions((prev) => prev.filter((ip) => ip.id !== id));
     toast.success("IP removed");
   };
+  
+  const handleUpdateGoal = async () => {
+    setUpdatingGoal(true);
+    const res = await updateMonthlyGoalAction(monthlyGoal);
+    setUpdatingGoal(false);
+    if (res.error) {
+      toast.error(res.error);
+    } else {
+      toast.success("Monthly click goal updated successfully!");
+    }
+  };
 
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
@@ -145,6 +165,9 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
             { value: "api", icon: Key, label: "API Keys" },
             { value: "ip", icon: Globe, label: "IP Exclusions" },
             { value: "appearance", icon: Palette, label: "Appearance" },
+            ...(profile.role === "admin" || profile.role === "super_admin" 
+              ? [{ value: "admin", icon: Target, label: "Admin" }] 
+              : []),
           ].map(({ value, icon: Icon, label }) => (
             <TabsTrigger key={value} value={value} className="gap-1.5 text-xs sm:text-sm">
               <Icon className="w-3.5 h-3.5" />
@@ -388,6 +411,52 @@ export default function SettingsClient({ profile: initialProfile, apiKeys: initi
             <Button className="bg-primary hover:bg-primary/90" onClick={handleSaveProfile} disabled={saving}>
               Save Preferences
             </Button>
+          </div>
+        </TabsContent>
+
+        {/* Admin Tab */}
+        <TabsContent value="admin">
+          <div className="rounded-xl border border-border bg-card p-6 space-y-6">
+            <div>
+              <h3 className="font-semibold mb-2">Platform Settings</h3>
+              <p className="text-sm text-muted-foreground mb-6">Manage global settings for all platform members.</p>
+              
+              <div className="space-y-4 max-w-sm">
+                <div className="space-y-2">
+                  <Label htmlFor="monthly-goal">Global Monthly Click Goal</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="monthly-goal"
+                      type="number"
+                      value={monthlyGoal}
+                      onChange={(e) => setMonthlyGoal(parseInt(e.target.value) || 0)}
+                      className="bg-background font-mono"
+                    />
+                    <span className="text-sm text-muted-foreground">clicks</span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground italic">
+                    This sets the target shown to all members on their dashboard progress bar.
+                  </p>
+                </div>
+                
+                <Button 
+                  className="bg-primary hover:bg-primary/90" 
+                  onClick={handleUpdateGoal} 
+                  disabled={updatingGoal}
+                >
+                  {updatingGoal ? "Updating..." : "Update Global Goal"}
+                </Button>
+              </div>
+            </div>
+            
+            <div className="pt-4 border-t border-border">
+              <h4 className="text-sm font-medium mb-2 text-amber-500 flex items-center gap-2">
+                <Shield className="w-4 h-4" /> Admin Controls
+              </h4>
+              <p className="text-xs text-muted-foreground">
+                More global administrative settings will appear here in future updates.
+              </p>
+            </div>
           </div>
         </TabsContent>
       </Tabs>

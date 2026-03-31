@@ -24,11 +24,24 @@ export default async function SettingsPage() {
     .eq("user_id", profile?.id || "")
     .order("created_at", { ascending: false });
 
+  const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+  let monthlyGoal = 1000;
+
+  if (isAdmin) {
+    const { data: goalSetting } = await supabase
+      .from("site_settings")
+      .select("value")
+      .eq("key", "monthly_click_goal")
+      .single();
+    if (goalSetting) monthlyGoal = parseInt(goalSetting.value);
+  }
+
   return (
     <SettingsClient
       profile={profile}
       apiKeys={apiKeys || []}
       ipExclusions={ipExclusions || []}
+      initialMonthlyGoal={monthlyGoal}
     />
   );
 }

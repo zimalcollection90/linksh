@@ -12,8 +12,18 @@ import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
+import WorldHeatmap from "../../components/world-heatmap";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8"];
+
+function getFlagEmoji(countryCode: string) {
+  if (!countryCode || countryCode === "Unknown" || countryCode.length !== 2) return "🌐";
+  const codePoints = countryCode
+    .toUpperCase()
+    .split("")
+    .map(char => 127397 + char.charCodeAt(0));
+  return String.fromCodePoint(...codePoints);
+}
 
 interface ClickEvent {
   id: string;
@@ -66,14 +76,43 @@ function processGrouped(clicks: ClickEvent[], field: keyof ClickEvent) {
     .map(([name, value]) => ({ name, value }));
 }
 
+function processCountryData(clicks: ClickEvent[]) {
+  const counts: Record<string, { value: number; code: string; name: string }> = {};
+  clicks.forEach((c) => {
+    const name = c.country || "Unknown";
+    const code = c.country_code || "Unknown";
+    if (!counts[name]) counts[name] = { value: 0, code, name };
+    counts[name].value++;
+  });
+  return Object.values(counts)
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 6);
+}
+
+function processHeatmapData(clicks: ClickEvent[]) {
+  const counts: Record<string, number> = {};
+  clicks.forEach((c) => {
+    if (c.country_code && c.country_code !== "Unknown") {
+      counts[c.country_code] = (counts[c.country_code] || 0) + 1;
+    }
+  });
+  return Object.entries(counts).map(([code, value]) => ({ code, value }));
+}
+
 export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClientProps) {
   const [copied, setCopied] = React.useState(false);
   const [view, setView] = React.useState<"all" | "real">("real");
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  const shortUrl = `${baseUrl}/${link.short_code}`;
+  const [origin, setOrigin] = React.useState("");
+
+  React.useEffect(() => {
+    setOrigin(window.location.origin);
+  }, []);
+
+  const shortUrl = origin ? `${origin}/${link.short_code}` : `/${link.short_code}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shortUrl);
+    const fullUrl = `${window.location.origin}/${link.short_code}`;
+    navigator.clipboard.writeText(fullUrl);
     setCopied(true);
     toast.success("Copied!");
     setTimeout(() => setCopied(false), 2000);
@@ -85,7 +124,8 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
   const displayClicks = view === "real" ? realClicks : clicks;
 
   const clicksByDay = processClicksByDay(clicks);
-  const byCountry = processGrouped(displayClicks, "country");
+  const byCountry = processCountryData(displayClicks);
+  const heatmapData = processHeatmapData(displayClicks);
   const byDevice = processGrouped(displayClicks, "device_type");
   const byBrowser = processGrouped(displayClicks, "browser");
   const byReferrer = processGrouped(displayClicks, "referrer");
@@ -268,6 +308,9 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
         </div>
       </div>
 
+      {/* World Map Heatmap */}
+      <WorldHeatmap data={heatmapData} />
+
       {/* Breakdowns */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Country */}
@@ -278,12 +321,13 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
             <span className="ml-auto text-xs text-muted-foreground">{view === "real" ? "Real clicks" : "All clicks"}</span>
           </div>
           {byCountry.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-8">No data yet</p>
+            <p className="text-sm text-muted-foreground text-center py-8">No clicks recorded yet</p>
           ) : (
             <div className="space-y-2">
               {byCountry.map((item) => (
                 <div key={item.name} className="flex items-center gap-2">
-                  <span className="text-sm w-28 text-muted-foreground truncate">{item.name}</span>
+                  <span className="text-lg leading-none">{getFlagEmoji(item.code)}</span>
+                  <span className="text-sm w-20 text-muted-foreground truncate">{item.name}</span>
                   <div className="flex-1 bg-muted rounded-full h-2">
                     <div
                       className="h-2 rounded-full bg-primary transition-all duration-500"

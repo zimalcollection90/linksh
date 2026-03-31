@@ -140,6 +140,9 @@ async function logClickFallbackAsync(args: {
   linkId: string;
   userId: string | null;
   ip: string | null;
+  country: string;
+  countryCode: string;
+  city: string;
   userAgent: string;
   referer: string | null;
   deviceType: string;
@@ -188,9 +191,9 @@ async function logClickFallbackAsync(args: {
     link_id: args.linkId,
     user_id: args.userId,
     ip_address: args.ip,
-    country: null,
-    country_code: null,
-    city: null,
+    country: args.country,
+    country_code: args.countryCode,
+    city: args.city,
     device_type: args.deviceType,
     browser: args.browser,
     os: args.os,
@@ -218,14 +221,7 @@ async function logClickFallbackAsync(args: {
 
   const clickEventId = clickData?.id ?? null;
 
-  if (clickEventId && args.ip) {
-    const enrichUrl = new URL("/api/geoip/enrich", args.requestUrl);
-    void fetch(enrichUrl.toString(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ click_event_id: clickEventId, ip_address: args.ip }),
-    }).catch(() => undefined);
-  }
+  // Removed fire-and-forget logic: GeoIP data is populated immediately beforehand.
 
   if (!payload.is_unique) return;
 
@@ -260,11 +256,50 @@ export async function GET(
   const userAgent = request.headers.get("user-agent") || "";
   const referer = request.headers.get("referer") || null;
   const forwardedFor = request.headers.get("x-forwarded-for") || "";
-  const ip = forwardedFor.split(",")[0]?.trim() || null;
+  const ip = request.headers.get("x-real-ip") || forwardedFor.split(",")[0]?.trim() || null;
 
   const deviceType = detectDeviceType(userAgent);
   const browser = detectBrowser(userAgent);
   const os = detectOS(userAgent);
+
+  let country = "Unknown";
+  let countryCode = "Unknown";
+  let city = "Unknown";
+
+  if (ip && ip.length > 7 && ip !== "127.0.0.1" && ip !== "::1") {
+    try {
+      let geoUrl: URL;
+      const template = process.env.GEOIP_API_URL_TEMPLATE;
+      if (template && template.includes("{{ip}}")) {
+        geoUrl = new URL(template.replaceAll("{{ip}}", encodeURIComponent(ip)));
+      } else {
+        // Default to ipapi.co
+        geoUrl = new URL(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
+      }
+
+      const apiKey = process.env.GEOIP_API_KEY;
+      if (apiKey) {
+        const keyParam = process.env.GEOIP_API_KEY_QUERY_PARAM || "key";
+        geoUrl.searchParams.set(keyParam, apiKey);
+      }
+
+      const resp = await fetch(geoUrl.toString(), {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(800), // Max 800ms
+      }).catch(() => null);
+
+      if (resp && resp.ok) {
+        const geoData = await resp.json().catch(() => null);
+        if (geoData) {
+          country = geoData.country_name || geoData.country || "Unknown";
+          countryCode = geoData.country_code || geoData.countryCode || "Unknown";
+          city = geoData.city || "Unknown";
+        }
+      }
+    } catch (err: any) {
+      console.error("[redirect] geoip enrichment error", err.message);
+    }
+  }
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("resolve_link_and_log_click", {
@@ -276,6 +311,9 @@ export async function GET(
     p_browser: browser,
     p_os: os,
     p_password: pw || null,
+    p_country: country,
+    p_country_code: countryCode,
+    p_city: city,
   });
 
   if (error) {
@@ -310,6 +348,9 @@ export async function GET(
       linkId: fallbackLink.id,
       userId: fallbackLink.user_id,
       ip,
+      country,
+      countryCode,
+      city,
       userAgent,
       referer,
       deviceType,
@@ -334,15 +375,7 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  // Fire-and-forget GeoIP enrichment (does not block the redirect).
-  if (clickEventId && ip) {
-    const enrichUrl = new URL("/api/geoip/enrich", request.url);
-    void fetch(enrichUrl.toString(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ click_event_id: clickEventId, ip_address: ip }),
-    }).catch(() => undefined);
-  }
+  // Removed fire-and-forget: we fetched GeoIP synchronously and inserted it via the RPC instead.
 
   return redirectResponse(destinationUrl);
 }

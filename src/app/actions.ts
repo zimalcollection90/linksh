@@ -3,6 +3,7 @@
 import { encodedRedirect } from "@/utils/utils";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { createClient } from "../../supabase/server";
 
 export const signUpAction = async (formData: FormData) => {
@@ -140,4 +141,37 @@ export const signOutAction = async () => {
   const supabase = await createClient();
   await supabase.auth.signOut();
   return redirect("/sign-in");
+};
+export const updateMonthlyGoalAction = async (goal: number) => {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return { error: "Not authenticated" };
+
+  const { data: profile } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", user.id)
+    .single();
+
+  if (profile?.role !== "admin" && profile?.role !== "super_admin") {
+    return { error: "Unauthorized" };
+  }
+
+  const { data: setting } = await supabase
+    .from("site_settings")
+    .select("id")
+    .eq("key", "monthly_click_goal")
+    .single();
+
+  if (!setting) {
+    await supabase.from("site_settings").insert({ key: "monthly_click_goal", value: goal.toString() });
+  } else {
+    await supabase
+      .from("site_settings")
+      .update({ value: goal.toString(), updated_at: new Date().toISOString() })
+      .eq("key", "monthly_click_goal");
+  }
+
+  revalidatePath("/dashboard");
+  return { success: true };
 };

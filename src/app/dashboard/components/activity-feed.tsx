@@ -119,7 +119,7 @@ export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
                     {click.links?.title || `/${click.links?.short_code || "link"}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {click.country || "Unknown"} · {formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true })}
+                    {click.country || "Unknown"} · {click.clicked_at && !isNaN(new Date(click.clicked_at).getTime()) ? formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true }) : "just now"}
                   </p>
                 </div>
                 {deviceIcon(click.device_type)}

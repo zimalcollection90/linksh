@@ -42,7 +42,7 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .select("*")
     .eq("user_id", memberId)
     .order("click_count", { ascending: false })
-    .limit(20);
+    .limit(100);
 
   // Fetch recent click events for this member (with metadata)
   const now = new Date();
@@ -58,15 +58,18 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .limit(200);
 
   // Country distribution
-  const countryCounts: Record<string, number> = {};
+  const countryCounts: Record<string, { value: number; code: string }> = {};
   for (const c of recentClicks || []) {
     if (!c.country || c.is_bot || c.is_filtered) continue;
-    countryCounts[c.country] = (countryCounts[c.country] || 0) + 1;
+    if (!countryCounts[c.country]) {
+      countryCounts[c.country] = { value: 0, code: c.country_code || "Unknown" };
+    }
+    countryCounts[c.country].value += 1;
   }
   const countryData = Object.entries(countryCounts)
-    .sort((a, b) => b[1] - a[1])
+    .sort((a, b) => b[1].value - a[1].value)
     .slice(0, 10)
-    .map(([name, value]) => ({ name, value }));
+    .map(([name, data]) => ({ name, value: data.value, code: data.code }));
 
   // Device distribution
   const deviceCounts: Record<string, number> = {};
