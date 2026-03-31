@@ -41,19 +41,51 @@ const navItems: NavItem[] = [
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
 
+function rolePriority(role?: string) {
+  if (role === "super_admin") return 3;
+  if (role === "admin") return 2;
+  return 1;
+}
+
 export default function AppSidebar() {
   const [collapsed, setCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
+  const [membership, setMembership] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const { theme, setTheme } = useTheme();
   const supabase = createClient();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
+        const { data: activeMemberships } = await supabase
+          .from("company_members")
+          .select("company_id, role, status, created_at")
+          .eq("user_id", user.id)
+          .eq("status", "active")
+          .order("created_at", { ascending: false });
+        if ((activeMemberships || []).length > 0) {
+          const bestActive = (activeMemberships || []).sort((a: any, b: any) => rolePriority(b.role) - rolePriority(a.role))[0];
+          setMembership(bestActive);
+        } else {
+          const { data: anyMemberships } = await supabase
+            .from("company_members")
+            .select("company_id, role, status, created_at")
+            .eq("user_id", user.id)
+            .order("created_at", { ascending: false });
+          if ((anyMemberships || []).length > 0) {
+            const bestAny = (anyMemberships || []).sort((a: any, b: any) => rolePriority(b.role) - rolePriority(a.role))[0];
+            setMembership(bestAny);
+          }
+        }
         const { data } = await supabase
           .from("users")
           .select("*")
@@ -65,7 +97,10 @@ export default function AppSidebar() {
     getUser();
   }, []);
 
-  const isAdmin = profile?.role === "admin";
+  const isAdmin =
+    membership?.role === "admin" ||
+    membership?.role === "super_admin" ||
+    profile?.role === "admin";
   const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const displayName = profile?.display_name || profile?.full_name || user?.email?.split("@")[0] || "User";
@@ -154,7 +189,9 @@ export default function AppSidebar() {
                   collapsed && "justify-center px-2"
                 )}
               >
-                {theme === "dark" ? (
+                {!mounted ? (
+                  <Moon className="w-4 h-4 flex-shrink-0" />
+                ) : theme === "dark" ? (
                   <Sun className="w-4 h-4 flex-shrink-0" />
                 ) : (
                   <Moon className="w-4 h-4 flex-shrink-0" />

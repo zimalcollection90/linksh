@@ -1,5 +1,5 @@
--- Ultra-fast redirect + click logging RPC.
--- Returns whether a password is required, and logs/updates analytics when it can.
+-- Historical baseline for resolve_link_and_log_click.
+-- Superseded by 20260330_resolve_link_and_log_click_rpc_with_click_id.sql.
 
 CREATE OR REPLACE FUNCTION public.resolve_link_and_log_click(
   p_code text,

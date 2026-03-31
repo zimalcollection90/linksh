@@ -139,14 +139,21 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
       return;
     }
 
-    const { data: profileData } = await supabase
-      .from("users")
-      .select("id")
+    const { data: membership } = await supabase
+      .from("company_members")
+      .select("company_id, status")
       .eq("user_id", user.id)
+      .order("created_at", { ascending: false })
+      .limit(1)
       .single();
 
-    if (!profileData) {
-      toast.error("User profile not found");
+    if (!membership?.company_id) {
+      toast.error("Company membership not found");
+      setLoading(false);
+      return;
+    }
+    if (membership.status !== "active") {
+      toast.error("Your account is pending admin approval");
       setLoading(false);
       return;
     }
@@ -181,7 +188,8 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
         .eq("id", editLink.id);
       error = result.error;
     } else {
-      payload.user_id = profileData.id;
+      payload.user_id = user.id;
+      payload.company_id = membership.company_id;
       const result = await supabase.from("links").insert(payload);
       error = result.error;
     }

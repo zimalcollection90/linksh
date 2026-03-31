@@ -37,8 +37,35 @@ function processGrouped(clicks: any[], field: string) {
     .map(([name, value]) => ({ name, value }));
 }
 
-export default function AnalyticsClient({ links, clicks, isAdmin }: { links: any[]; clicks: any[]; isAdmin: boolean }) {
+function processClicksByMonth(clicks: any[]) {
+  const counts: Record<string, number> = {};
+  clicks.forEach((c) => {
+    if (!c.clicked_at) return;
+    const key = c.clicked_at.slice(0, 7);
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  return Object.keys(counts)
+    .sort()
+    .slice(-6)
+    .map((k) => ({
+      month: format(new Date(`${k}-01T00:00:00Z`), "MMM yyyy"),
+      clicks: counts[k],
+    }));
+}
+
+export default function AnalyticsClient({
+  links,
+  clicks,
+  isAdmin,
+  members = [],
+}: {
+  links: any[];
+  clicks: any[];
+  isAdmin: boolean;
+  members?: any[];
+}) {
   const clicksByDay = processClicksByDay(clicks);
+  const clicksByMonth = processClicksByMonth(clicks);
   const byCountry = processGrouped(clicks, "country");
   const byDevice = processGrouped(clicks, "device_type");
   const byBrowser = processGrouped(clicks, "browser");
@@ -50,6 +77,31 @@ export default function AnalyticsClient({ links, clicks, isAdmin }: { links: any
   const topLinks = [...links]
     .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
     .slice(0, 5);
+
+  const memberRows = isAdmin
+    ? (members || []).map((m: any) => {
+        const ownLinks = links.filter((l) => l.user_id === m.id);
+        const ownLinkIds = new Set(ownLinks.map((l) => l.id));
+        const ownClicks = clicks.filter((c) => ownLinkIds.has(c.link_id));
+        const countryCount = new Set(ownClicks.map((c) => c.country_code).filter(Boolean)).size;
+        const monthCount = ownClicks.filter((c) => {
+          if (!c.clicked_at) return false;
+          const now = new Date();
+          const dt = new Date(c.clicked_at);
+          return dt.getUTCFullYear() === now.getUTCFullYear() && dt.getUTCMonth() === now.getUTCMonth();
+        }).length;
+        return {
+          id: m.id,
+          name: m.display_name || m.full_name || m.email || "Unknown",
+          role: m.role || "member",
+          status: m.status || "pending",
+          links: ownLinks.length,
+          totalClicks: ownClicks.length,
+          monthClicks: monthCount,
+          countries: countryCount,
+        };
+      })
+    : [];
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">
@@ -97,6 +149,25 @@ export default function AnalyticsClient({ links, clicks, isAdmin }: { links: any
           </AreaChart>
         </ResponsiveContainer>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="font-semibold text-sm mb-4">Monthly Click Trends</h3>
+          {clicksByMonth.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-6">No monthly data yet</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={180}>
+              <BarChart data={clicksByMonth} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" opacity={0.4} />
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "11px" }} />
+                <Bar dataKey="clicks" fill="#7C3AED" radius={[3, 3, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Top Countries */}
@@ -198,6 +269,46 @@ export default function AnalyticsClient({ links, clicks, isAdmin }: { links: any
           )}
         </div>
       </div>
+
+      {isAdmin && (
+        <div className="rounded-xl border border-border bg-card p-5">
+          <h3 className="font-semibold text-sm mb-4">Member Performance Details</h3>
+          {memberRows.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-8">No members found</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border/60">
+                    <th className="text-left text-xs text-muted-foreground pb-2">Member</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">Role</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">Status</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">Links</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">Total Clicks</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">This Month</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2">Countries</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {memberRows
+                    .sort((a: any, b: any) => b.totalClicks - a.totalClicks)
+                    .map((row: any) => (
+                      <tr key={row.id} className="border-b border-border/30 last:border-0">
+                        <td className="py-2 text-sm">{row.name}</td>
+                        <td className="py-2 text-xs text-muted-foreground">{row.role}</td>
+                        <td className="py-2 text-xs text-muted-foreground">{row.status}</td>
+                        <td className="py-2 text-sm">{row.links}</td>
+                        <td className="py-2 text-sm">{row.totalClicks.toLocaleString()}</td>
+                        <td className="py-2 text-sm">{row.monthClicks.toLocaleString()}</td>
+                        <td className="py-2 text-sm">{row.countries}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

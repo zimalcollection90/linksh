@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../supabase/admin";
-import { getApiContext } from "../_lib/api-auth";
+import { getApiContext, requireActiveMembership } from "../_lib/api-auth";
 import { createClient } from "../../../../supabase/server";
 
 export async function GET(req: NextRequest) {
   const ctx = await getApiContext(req);
+  requireActiveMembership(ctx);
 
   // Prefer RLS/session mode client when possible.
   const supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
@@ -38,7 +39,48 @@ export async function GET(req: NextRequest) {
 }
 
 // POST create is intentionally not implemented yet in this phased rollout.
-export async function POST() {
-  return NextResponse.json({ error: "Not implemented" }, { status: 501 });
+export async function POST(req: NextRequest) {
+  const ctx = await getApiContext(req);
+  requireActiveMembership(ctx);
+
+  let body: any;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const destinationUrl = (body?.destination_url || "").toString().trim();
+  const shortCode = (body?.short_code || "").toString().trim();
+  if (!destinationUrl || !shortCode) {
+    return NextResponse.json({ error: "destination_url and short_code are required" }, { status: 400 });
+  }
+
+  const payload = {
+    company_id: ctx.companyId,
+    user_id: ctx.userId,
+    destination_url: destinationUrl,
+    short_code: shortCode,
+    title: body?.title || null,
+    status: body?.status || "active",
+    expires_at: body?.expires_at || null,
+    is_password_protected: !!body?.is_password_protected,
+    password_hash: body?.password_hash || null,
+    utm_source: body?.utm_source || null,
+    utm_medium: body?.utm_medium || null,
+    utm_campaign: body?.utm_campaign || null,
+    utm_term: body?.utm_term || null,
+    utm_content: body?.utm_content || null,
+  };
+
+  const supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
+  const { data, error } = await supabase
+    .from("links")
+    .insert(payload)
+    .select("id, short_code, destination_url, title, click_count, status, created_at")
+    .single();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 400 });
+  return NextResponse.json({ link: data }, { status: 201 });
 }
 

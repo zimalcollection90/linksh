@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { UserPlus, Search, Ban, CheckCircle, Mail, Users, MoreHorizontal, Shield } from "lucide-react";
-import { createClient } from "../../../../supabase/client";
+import { UserPlus, Search, Ban, CheckCircle, Mail, Users, MoreHorizontal, Shield, Download } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
@@ -30,7 +29,7 @@ export default function MembersClient({ members: initialMembers, invites }: { me
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [inviting, setInviting] = useState(false);
-  const supabase = createClient();
+  const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
   const filtered = members.filter((m) =>
     !search ||
@@ -39,38 +38,95 @@ export default function MembersClient({ members: initialMembers, invites }: { me
     m.display_name?.toLowerCase().includes(search.toLowerCase())
   );
 
+  const selectedUserIds = useMemo(
+    () => Object.entries(selectedIds).filter(([, checked]) => checked).map(([id]) => id),
+    [selectedIds]
+  );
+
+  const callMembersApi = async (payload: any) => {
+    const res = await fetch("/api/admin/members", {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Request failed");
+  };
+
+  useEffect(() => {
+    const loadMembers = async () => {
+      try {
+        const res = await fetch("/api/admin/members", { cache: "no-store" });
+        const json = await res.json();
+        if (res.ok && Array.isArray(json?.members)) {
+          const normalized = json.members.map((m: any) => ({
+            ...m,
+            status: m.membership_status || m.status || "pending",
+          }));
+          setMembers(normalized);
+        }
+      } catch {
+        // Best-effort hydration from API.
+      }
+    };
+    loadMembers();
+  }, []);
+
   const handleUpdateStatus = async (memberId: string, status: string) => {
-    const { error } = await supabase.from("users").update({ status }).eq("id", memberId);
-    if (error) { toast.error("Failed to update status"); return; }
+    try {
+      await callMembersApi({ action: "set_status", userId: memberId, status });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update status");
+      return;
+    }
     setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, status } : m));
     toast.success(`Member ${status}`);
   };
 
   const handleUpdateRole = async (memberId: string, role: string) => {
-    const { error } = await supabase.from("users").update({ role }).eq("id", memberId);
-    if (error) { toast.error("Failed to update role"); return; }
+    try {
+      await callMembersApi({ action: "set_role", userId: memberId, role });
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update role");
+      return;
+    }
     setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, role } : m));
     toast.success(`Role updated to ${role}`);
+  };
+
+  const handleBulkStatus = async (status: string) => {
+    if (selectedUserIds.length === 0) {
+      toast.error("Select at least one member");
+      return;
+    }
+    try {
+      await callMembersApi({ action: "set_status", userIds: selectedUserIds, status });
+      setMembers((prev) => prev.map((m) => (
+        selectedUserIds.includes(m.id) ? { ...m, status } : m
+      )));
+      setSelectedIds({});
+      toast.success(`Updated ${selectedUserIds.length} members`);
+    } catch (e: any) {
+      toast.error(e?.message || "Bulk update failed");
+    }
   };
 
   const handleInvite = async () => {
     if (!inviteEmail) { toast.error("Email required"); return; }
     setInviting(true);
-    const token = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    const { data: currentUser } = await supabase.auth.getUser();
-    if (!currentUser.user) { setInviting(false); return; }
-    const { data: profile } = await supabase.from("users").select("id").eq("user_id", currentUser.user.id).single();
-
-    const { error } = await supabase.from("invites").insert({
-      invited_by: profile?.id,
-      email: inviteEmail,
-      role: inviteRole,
-      token,
+    const res = await fetch("/api/invites", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        email: inviteEmail,
+        role: inviteRole,
+      }),
     });
+    const payload = await res.json();
 
     setInviting(false);
-    if (error) { toast.error("Failed to send invite"); return; }
-    const inviteUrl = `${window.location.origin}/invite?token=${encodeURIComponent(token)}`;
+    if (!res.ok) { toast.error(payload?.error || "Failed to send invite"); return; }
+    const inviteUrl = payload?.inviteUrl || `${window.location.origin}/invite?token=${encodeURIComponent(payload?.invite?.token || "")}`;
     try {
       await navigator.clipboard.writeText(inviteUrl);
     } catch {
@@ -89,10 +145,16 @@ export default function MembersClient({ members: initialMembers, invites }: { me
           <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Members</h1>
           <p className="text-sm text-muted-foreground mt-1">{members.length} total members</p>
         </div>
-        <Button className="gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setInviteOpen(true)}>
-          <UserPlus className="w-4 h-4" />
-          Invite Member
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={() => window.open("/api/admin/members/export", "_blank")}>
+            <Download className="w-4 h-4" />
+            Export CSV
+          </Button>
+          <Button className="gap-2 bg-primary hover:bg-primary/90 text-white" onClick={() => setInviteOpen(true)}>
+            <UserPlus className="w-4 h-4" />
+            Invite Member
+          </Button>
+        </div>
       </div>
 
       {/* Stats */}
@@ -122,6 +184,18 @@ export default function MembersClient({ members: initialMembers, invites }: { me
           onChange={(e) => setSearch(e.target.value)}
           className="pl-9 bg-muted/50"
         />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="outline" onClick={() => handleBulkStatus("active")} disabled={selectedUserIds.length === 0}>
+          Activate Selected
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => handleBulkStatus("suspended")} disabled={selectedUserIds.length === 0}>
+          Suspend Selected
+        </Button>
+        <Button size="sm" variant="outline" onClick={() => handleBulkStatus("pending")} disabled={selectedUserIds.length === 0}>
+          Mark Pending
+        </Button>
       </div>
 
       {/* Members Table */}
@@ -154,6 +228,11 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                   >
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2.5">
+                        <input
+                          type="checkbox"
+                          checked={!!selectedIds[member.id]}
+                          onChange={(e) => setSelectedIds((prev) => ({ ...prev, [member.id]: e.target.checked }))}
+                        />
                         <Avatar className="w-7 h-7">
                           <AvatarImage src={member.avatar_url} />
                           <AvatarFallback className="text-xs bg-primary/20 text-primary">{initials}</AvatarFallback>

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../../supabase/admin";
 import { createClient } from "../../../../../supabase/server";
-import { getApiContext } from "../../_lib/api-auth";
+import { getApiContext, requireActiveMembership } from "../../_lib/api-auth";
 
 export async function GET(req: NextRequest) {
   const ctx = await getApiContext(req);
+  requireActiveMembership(ctx);
   const supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
 
   const { searchParams } = new URL(req.url);

@@ -1,5 +1,6 @@
--- Extend resolve_link_and_log_click to return the inserted click_event_id
--- so we can enrich geo fields asynchronously without extra lookups.
+-- Authoritative definition for resolve_link_and_log_click.
+-- This is the latest migration and should be present in all deployed environments.
+-- It returns click_event_id so geo enrichment can run asynchronously.
 
 CREATE OR REPLACE FUNCTION public.resolve_link_and_log_click(
   p_code text,

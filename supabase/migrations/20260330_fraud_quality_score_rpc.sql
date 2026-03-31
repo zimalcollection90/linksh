@@ -1,3 +1,6 @@
+-- Historical extension of resolve_link_and_log_click with fraud scoring.
+-- If this file diverges from production behavior, prefer the current authoritative
+-- migration: 20260330_resolve_link_and_log_click_rpc_with_click_id.sql.
 -- Click Quality Score + fraud flags
 -- Computes per-link fraud metrics over the last 24h and updates:
 -- - click_events.quality_score (per click)

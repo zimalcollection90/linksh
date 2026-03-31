@@ -3,12 +3,15 @@ import { createAdminClient } from "../../../../supabase/admin";
 import { createClient } from "../../../../supabase/server";
 
 type ApiRole = "super_admin" | "admin" | "member";
+type MembershipStatus = "active" | "suspended" | "pending";
+type MembershipRow = { company_id: string; role: ApiRole; status: MembershipStatus; created_at?: string };
 
 export type ApiContext = {
   authMode: "session" | "api_key";
   userId: string;
   companyId: string;
   role: ApiRole;
+  membershipStatus: MembershipStatus;
 };
 
 function getBearerToken(req: NextRequest) {
@@ -17,30 +20,55 @@ function getBearerToken(req: NextRequest) {
   return match?.[1] || null;
 }
 
+function rolePriority(role: ApiRole) {
+  if (role === "super_admin") return 3;
+  if (role === "admin") return 2;
+  return 1;
+}
+
+function pickBestMembership(rows: MembershipRow[]) {
+  const active = rows.filter((r) => r.status === "active");
+  const pool = active.length > 0 ? active : rows;
+  if (pool.length === 0) return null;
+  return [...pool].sort((a, b) => rolePriority(b.role) - rolePriority(a.role))[0];
+}
+
 async function getSessionContext(): Promise<ApiContext> {
   const supabase = await createClient();
   const { data: authData, error } = await supabase.auth.getUser();
   if (error || !authData.user) {
     throw new Response("Unauthorized", { status: 401 });
   }
-
-  const { data: membership } = await supabase
-    .from("company_members")
-    .select("company_id, role")
+  const { data: profileByUserId } = await supabase
+    .from("users")
+    .select("role")
     .eq("user_id", authData.user.id)
-    .eq("status", "active")
-    .limit(1)
     .single();
+  const { data: profileById } = await supabase
+    .from("users")
+    .select("role")
+    .eq("id", authData.user.id)
+    .single();
+  const profile = profileByUserId || profileById;
 
-  if (!membership?.company_id) {
+  const { data: memberships } = await supabase
+    .from("company_members")
+    .select("company_id, role, status, created_at")
+    .eq("user_id", authData.user.id)
+    .order("created_at", { ascending: false });
+
+  const membership = pickBestMembership((memberships || []) as MembershipRow[]);
+
+  if (!membership?.company_id && profile?.role !== "admin") {
     throw new Response("No active company membership", { status: 403 });
   }
 
   return {
     authMode: "session",
     userId: authData.user.id,
-    companyId: membership.company_id,
-    role: membership.role as ApiRole,
+    companyId: membership?.company_id || authData.user.id,
+    role: ((profile?.role === "admin" ? "admin" : membership?.role || "member") as ApiRole),
+    membershipStatus: ((membership?.status || (profile?.role === "admin" ? "active" : "pending")) as MembershipStatus),
   };
 }
 
@@ -77,22 +105,28 @@ async function getApiKeyContext(req: NextRequest): Promise<ApiContext> {
     }
   })();
 
-  const { data: membership } = await admin
+  const { data: memberships } = await admin
     .from("company_members")
-    .select("role")
-    .eq("company_id", keyRow.company_id)
+    .select("company_id, role, status, created_at")
     .eq("user_id", keyRow.user_id)
-    .eq("status", "active")
-    .limit(1)
+    .order("created_at", { ascending: false });
+
+  const membership = pickBestMembership((memberships || []) as MembershipRow[]);
+  const { data: profile } = await admin
+    .from("users")
+    .select("role")
+    .eq("id", keyRow.user_id)
     .single();
 
-  const role = (membership?.role || "member") as ApiRole;
+  const role = ((profile?.role === "admin" ? "admin" : (membership?.role || "member")) as ApiRole);
+  const membershipStatus = (membership?.status || "pending") as MembershipStatus;
 
   return {
     authMode: "api_key",
     userId: keyRow.user_id,
-    companyId: keyRow.company_id,
+    companyId: membership?.company_id || keyRow.company_id,
     role,
+    membershipStatus,
   };
 }
 
@@ -105,6 +139,12 @@ export async function getApiContext(req: NextRequest): Promise<ApiContext> {
 export function requireAdmin(ctx: ApiContext) {
   if (ctx.role !== "admin" && ctx.role !== "super_admin") {
     throw new Response("Forbidden", { status: 403 });
+  }
+}
+
+export function requireActiveMembership(ctx: ApiContext) {
+  if (ctx.membershipStatus !== "active") {
+    throw new Response("Membership is pending admin approval", { status: 403 });
   }
 }
 

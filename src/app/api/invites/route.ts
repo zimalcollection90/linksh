@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../supabase/admin";
+import { createClient } from "../../../../supabase/server";
 import { getApiContext, requireAdmin } from "../_lib/api-auth";
 
 function generateInviteToken() {
@@ -7,10 +8,20 @@ function generateInviteToken() {
 }
 
 export async function GET(req: NextRequest) {
-  const ctx = await getApiContext(req);
-  requireAdmin(ctx);
-
-  const supabase = createAdminClient();
+  let ctx;
+  try {
+    ctx = await getApiContext(req);
+    requireAdmin(ctx);
+  } catch (e: any) {
+    if (e instanceof Response) return e;
+    return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
+  }
+  let supabase: any;
+  try {
+    supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Failed to initialize database client" }, { status: 500 });
+  }
   const { data, error } = await supabase
     .from("invites")
     .select("id, email, role, token, status, expires_at, created_at, company_id, invited_by")
@@ -22,8 +33,14 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const ctx = await getApiContext(req);
-  requireAdmin(ctx);
+  let ctx;
+  try {
+    ctx = await getApiContext(req);
+    requireAdmin(ctx);
+  } catch (e: any) {
+    if (e instanceof Response) return e;
+    return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
+  }
 
   let body: any;
   try {
@@ -40,7 +57,12 @@ export async function POST(req: NextRequest) {
   const inviteRole = role === "admin" ? "admin" : "member";
   const token = generateInviteToken();
 
-  const supabase = createAdminClient();
+  let supabase: any;
+  try {
+    supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message || "Failed to initialize database client" }, { status: 500 });
+  }
   const { data, error } = await supabase
     .from("invites")
     .insert({
