@@ -328,9 +328,14 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                             </DropdownMenuItem>
                             <DropdownMenuSeparator />
                             {member.status === "pending" && (
-                              <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "active")} className="gap-2 text-green-400 focus:text-green-400">
-                                <CheckCircle className="w-3.5 h-3.5" /> Approve Member
-                              </DropdownMenuItem>
+                              <>
+                                <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "active")} className="gap-2 text-green-400 focus:text-green-400">
+                                  <CheckCircle className="w-3.5 h-3.5" /> Approve Member
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "suspended")} className="gap-2 text-red-400 focus:text-red-400">
+                                  <Ban className="w-3.5 h-3.5" /> Reject Member
+                                </DropdownMenuItem>
+                              </>
                             )}
                             <DropdownMenuItem onClick={() => handleUpdateRole(member.id, member.role === "admin" ? "member" : "admin")} className="gap-2">
                               <Shield className="w-3.5 h-3.5" />

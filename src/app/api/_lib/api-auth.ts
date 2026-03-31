@@ -3,15 +3,14 @@ import { createAdminClient } from "../../../../supabase/admin";
 import { createClient } from "../../../../supabase/server";
 
 type ApiRole = "super_admin" | "admin" | "member";
-type MembershipStatus = "active" | "suspended" | "pending";
-type MembershipRow = { company_id: string; role: ApiRole; status: MembershipStatus; created_at?: string };
+type MemberStatus = "active" | "suspended" | "pending";
 
 export type ApiContext = {
   authMode: "session" | "api_key";
   userId: string;
   companyId: string;
   role: ApiRole;
-  membershipStatus: MembershipStatus;
+  memberStatus: MemberStatus;
 };
 
 function getBearerToken(req: NextRequest) {
@@ -20,55 +19,37 @@ function getBearerToken(req: NextRequest) {
   return match?.[1] || null;
 }
 
-function rolePriority(role: ApiRole) {
-  if (role === "super_admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
-}
-
-function pickBestMembership(rows: MembershipRow[]) {
-  const active = rows.filter((r) => r.status === "active");
-  const pool = active.length > 0 ? active : rows;
-  if (pool.length === 0) return null;
-  return [...pool].sort((a, b) => rolePriority(b.role) - rolePriority(a.role))[0];
-}
-
 async function getSessionContext(): Promise<ApiContext> {
   const supabase = await createClient();
   const { data: authData, error } = await supabase.auth.getUser();
   if (error || !authData.user) {
     throw new Response("Unauthorized", { status: 401 });
   }
-  const { data: profileByUserId } = await supabase
+  const { data: profileByUserId, error: profileByUserIdErr } = await supabase
     .from("users")
-    .select("role")
+    .select("id, role, status")
     .eq("user_id", authData.user.id)
     .single();
-  const { data: profileById } = await supabase
+  const { data: profileById, error: profileByIdErr } = await supabase
     .from("users")
-    .select("role")
+    .select("id, role, status")
     .eq("id", authData.user.id)
     .single();
   const profile = profileByUserId || profileById;
 
-  const { data: memberships } = await supabase
-    .from("company_members")
-    .select("company_id, role, status, created_at")
-    .eq("user_id", authData.user.id)
-    .order("created_at", { ascending: false });
-
-  const membership = pickBestMembership((memberships || []) as MembershipRow[]);
-
-  if (!membership?.company_id && profile?.role !== "admin") {
-    throw new Response("No active company membership", { status: 403 });
+  if (!profile && profileByUserIdErr && profileByIdErr) {
+    throw new Response("Account profile not found", { status: 403 });
   }
+
+  const role = (profile?.role === "admin" || profile?.role === "super_admin" ? profile.role : "member") as ApiRole;
+  const memberStatus = (profile?.status || (role === "admin" || role === "super_admin" ? "active" : "pending")) as MemberStatus;
 
   return {
     authMode: "session",
     userId: authData.user.id,
-    companyId: membership?.company_id || authData.user.id,
-    role: ((profile?.role === "admin" ? "admin" : membership?.role || "member") as ApiRole),
-    membershipStatus: ((membership?.status || (profile?.role === "admin" ? "active" : "pending")) as MembershipStatus),
+    companyId: authData.user.id,
+    role,
+    memberStatus,
   };
 }
 
@@ -105,28 +86,31 @@ async function getApiKeyContext(req: NextRequest): Promise<ApiContext> {
     }
   })();
 
-  const { data: memberships } = await admin
-    .from("company_members")
-    .select("company_id, role, status, created_at")
-    .eq("user_id", keyRow.user_id)
-    .order("created_at", { ascending: false });
-
-  const membership = pickBestMembership((memberships || []) as MembershipRow[]);
-  const { data: profile } = await admin
+  const { data: profileById } = await admin
     .from("users")
-    .select("role")
+    .select("id, user_id, role, status")
     .eq("id", keyRow.user_id)
     .single();
+  const { data: profileByUserId } = await admin
+    .from("users")
+    .select("id, user_id, role, status")
+    .eq("user_id", keyRow.user_id)
+    .single();
+  const profile = profileById || profileByUserId;
 
-  const role = ((profile?.role === "admin" ? "admin" : (membership?.role || "member")) as ApiRole);
-  const membershipStatus = (membership?.status || "pending") as MembershipStatus;
+  if (!profile) {
+    throw new Response("Account profile not found", { status: 403 });
+  }
+
+  const role = ((profile?.role === "admin" || profile?.role === "super_admin" ? profile.role : "member") as ApiRole);
+  const memberStatus = ((profile?.status || (role === "admin" || role === "super_admin" ? "active" : "pending")) as MemberStatus);
 
   return {
     authMode: "api_key",
     userId: keyRow.user_id,
-    companyId: membership?.company_id || keyRow.company_id,
+    companyId: keyRow.company_id || keyRow.user_id,
     role,
-    membershipStatus,
+    memberStatus,
   };
 }
 
@@ -142,9 +126,12 @@ export function requireAdmin(ctx: ApiContext) {
   }
 }
 
-export function requireActiveMembership(ctx: ApiContext) {
-  if (ctx.membershipStatus !== "active") {
-    throw new Response("Membership is pending admin approval", { status: 403 });
+export function requireActiveMember(ctx: ApiContext) {
+  if (ctx.memberStatus !== "active") {
+    throw new Response("Account is pending admin approval", { status: 403 });
   }
 }
+
+// Backward compatible alias used by existing route files.
+export const requireActiveMembership = requireActiveMember;
 

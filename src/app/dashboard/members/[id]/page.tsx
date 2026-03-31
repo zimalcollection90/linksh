@@ -2,44 +2,21 @@ import { createClient } from "../../../../../supabase/server";
 import { redirect, notFound } from "next/navigation";
 import MemberAnalyticsClient from "./member-analytics-client";
 
-function rolePriority(role?: string) {
-  if (role === "super_admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
-}
-
 export default async function MemberAnalyticsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: memberId } = await params;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: memberships } = await supabase
-    .from("company_members")
-    .select("company_id, role, status")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  const activeMemberships = (memberships || []).filter((m: any) => m.status === "active");
-  const membership = (activeMemberships.length > 0 ? activeMemberships : (memberships || []))
-    .sort((a: any, b: any) => rolePriority(b.role) - rolePriority(a.role))[0];
-
   const { data: profile } = await supabase
     .from("users")
-    .select("role")
-    .eq("user_id", user.id)
+    .select("id, role, status")
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .single();
 
-  const effectiveMembership = membership || (profile?.role === "admin"
-    ? { company_id: user.id, role: "admin", status: "active" }
-    : null);
+  const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
 
-  const isAdmin =
-    effectiveMembership?.role === "admin" ||
-    effectiveMembership?.role === "super_admin" ||
-    profile?.role === "admin";
-
-  if (!isAdmin || effectiveMembership?.status !== "active") {
+  if (!isAdmin || profile?.status !== "active") {
     return redirect("/dashboard");
   }
 
@@ -51,14 +28,6 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .single();
 
   if (!memberProfile) return notFound();
-
-  // Fetch member's company membership info
-  const { data: memberMembership } = await supabase
-    .from("company_members")
-    .select("*")
-    .eq("company_id", effectiveMembership!.company_id)
-    .eq("user_id", memberId)
-    .single();
 
   // Fetch real click stats via RPC
   const { data: clickStatsData } = await supabase.rpc("get_user_click_stats", { p_user_id: memberId });
@@ -72,7 +41,6 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .from("links")
     .select("*")
     .eq("user_id", memberId)
-    .eq("company_id", effectiveMembership!.company_id)
     .order("click_count", { ascending: false })
     .limit(20);
 
@@ -133,7 +101,7 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
 
   return (
     <MemberAnalyticsClient
-      member={{ ...memberProfile, ...memberMembership, membership_status: memberMembership?.status || memberProfile?.status }}
+      member={{ ...memberProfile, membership_status: memberProfile?.status }}
       clickStats={{
         totalClicks: Number(clickStats.total_clicks) || 0,
         realClicks: Number(clickStats.real_clicks) || 0,
@@ -154,7 +122,6 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
       browserData={browserData}
       earnings={earnings || []}
       totalEarnings={totalEarnings}
-      companyId={effectiveMembership!.company_id}
     />
   );
 }

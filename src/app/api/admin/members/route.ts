@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../../supabase/admin";
 import { createClient } from "../../../../../supabase/server";
-import { getApiContext, requireAdmin } from "../../_lib/api-auth";
+import { getApiContext, requireActiveMembership, requireAdmin } from "../../_lib/api-auth";
 
 export async function GET(req: NextRequest) {
   let ctx;
   try {
     ctx = await getApiContext(req);
     requireAdmin(ctx);
+    requireActiveMembership(ctx);
   } catch (e: any) {
     if (e instanceof Response) return e;
     return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
@@ -20,44 +21,58 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: e?.message || "Failed to initialize database client" }, { status: 500 });
   }
 
-  const { data: memberships, error: mErr } = await supabase
-    .from("company_members")
-    .select("user_id, role, status, created_at")
-    .eq("company_id", ctx.companyId);
+  const usersQuery = (columns: string) =>
+    supabase
+      .from("users")
+      .select(columns)
+      .order("created_at", { ascending: false });
 
-  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
-
-  const { data: users, error: uErr } = await supabase
-    .from("users")
-    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
-    .order("created_at", { ascending: false });
+  let { data: users, error: uErr } = await usersQuery(
+    "id, user_id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip"
+  );
+  if (uErr) {
+    // Fallback for environments where optional profile columns are not migrated yet.
+    const fallback = await usersQuery(
+      "id, user_id, full_name, display_name, email, avatar_url, status, role, created_at"
+    );
+    users = fallback.data;
+    uErr = fallback.error;
+  }
 
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 400 });
 
   const { data: links, error: lErr } = await supabase
     .from("links")
     .select("user_id, click_count")
-    .eq("company_id", ctx.companyId);
+    .in("user_id", (users || []).map((u: any) => u.id));
   if (lErr) return NextResponse.json({ error: lErr.message }, { status: 400 });
 
   const { data: earnings, error: eErr } = await supabase
     .from("earnings")
     .select("user_id, amount")
-    .eq("company_id", ctx.companyId);
+    .in("user_id", (users || []).map((u: any) => u.id));
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 400 });
 
-  // Fetch real click stats per member
-  const { data: memberClickStats } = await supabase.rpc("get_member_stats_for_company", {
-    p_company_id: ctx.companyId,
-  });
+  const { data: memberClickStats } = await supabase
+    .from("click_events")
+    .select("user_id, is_bot, is_filtered, is_unique")
+    .in("user_id", (users || []).map((u: any) => u.id))
+    .limit(50000);
+
   const clickStatsByUser: Record<string, any> = {};
   for (const s of memberClickStats || []) {
-    clickStatsByUser[s.user_id] = s;
-  }
-
-  const memberById: Record<string, any> = {};
-  for (const m of memberships || []) {
-    memberById[m.user_id] = m;
+    if (!s.user_id) continue;
+    const bucket = clickStatsByUser[s.user_id] || {
+      real_clicks: 0,
+      unique_users: 0,
+      bot_excluded: 0,
+      filtered_clicks: 0,
+    };
+    if (s.is_bot) bucket.bot_excluded += 1;
+    if (s.is_filtered) bucket.filtered_clicks += 1;
+    if (!s.is_bot && !s.is_filtered) bucket.real_clicks += 1;
+    if (s.is_unique) bucket.unique_users += 1;
+    clickStatsByUser[s.user_id] = bucket;
   }
 
   const linkStats: Record<string, { linkCount: number; totalClicks: number }> = {};
@@ -76,13 +91,13 @@ export async function GET(req: NextRequest) {
 
   const members = (users || []).map((u: any) => ({
     ...u,
-    role: memberById[u.id]?.role ?? (u.role === "admin" ? "admin" : "member"),
-    membership_status: memberById[u.id]?.status ?? "pending",
-    membership_created_at: memberById[u.id]?.created_at ?? u.created_at,
+    role: u.role === "admin" || u.role === "super_admin" ? u.role : "member",
+    membership_status: u.status ?? "pending",
+    membership_created_at: u.created_at,
     linkCount: linkStats[u.id]?.linkCount || 0,
     totalClicks: linkStats[u.id]?.totalClicks || 0,
     totalEarnings: earningStats[u.id] || 0,
-    isInCompany: !!memberById[u.id],
+    isInCompany: true,
     realClicks: Number(clickStatsByUser[u.id]?.real_clicks) || 0,
     uniqueUsers: Number(clickStatsByUser[u.id]?.unique_users) || 0,
     botExcluded: Number(clickStatsByUser[u.id]?.bot_excluded) || 0,
@@ -97,6 +112,7 @@ export async function PATCH(req: NextRequest) {
   try {
     ctx = await getApiContext(req);
     requireAdmin(ctx);
+    requireActiveMembership(ctx);
   } catch (e: any) {
     if (e instanceof Response) return e;
     return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
@@ -127,24 +143,19 @@ export async function PATCH(req: NextRequest) {
   }
 
   if (action === "set_status") {
-    const status = (body?.status || "").toString();
+    const requested = (body?.status || "").toString().toLowerCase();
+    const status =
+      requested === "approve" ? "active" :
+      requested === "reject" ? "suspended" :
+      requested;
+    if (!["active", "pending", "suspended"].includes(status)) {
+      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    }
     for (const id of targetIds) {
-      await supabase
-        .from("company_members")
-        .upsert(
-          {
-            company_id: ctx.companyId,
-            user_id: id,
-            role: "member",
-            status: "pending",
-          },
-          { onConflict: "company_id,user_id" }
-        );
-      const { error } = await supabase.rpc("admin_set_member_status", {
-        p_company_id: ctx.companyId,
-        p_member_user_id: id,
-        p_status: status,
-      });
+      const { error } = await supabase
+        .from("users")
+        .update({ status, updated_at: new Date().toISOString() })
+        .eq("id", id);
       if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
@@ -155,22 +166,13 @@ export async function PATCH(req: NextRequest) {
     if (targetIds.length > 1) {
       return NextResponse.json({ error: "Bulk role updates are not supported" }, { status: 400 });
     }
-    await supabase
-      .from("company_members")
-      .upsert(
-        {
-          company_id: ctx.companyId,
-          user_id: targetIds[0],
-          role: "member",
-          status: "pending",
-        },
-        { onConflict: "company_id,user_id" }
-      );
-    const { error } = await supabase.rpc("admin_set_member_role", {
-      p_company_id: ctx.companyId,
-      p_member_user_id: targetIds[0],
-      p_role: role,
-    });
+    if (!["admin", "member"].includes(role)) {
+      return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+    }
+    const { error } = await supabase
+      .from("users")
+      .update({ role, updated_at: new Date().toISOString() })
+      .eq("id", targetIds[0]);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     return NextResponse.json({ ok: true });
   }

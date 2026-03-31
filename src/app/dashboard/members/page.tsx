@@ -2,83 +2,54 @@ import { createClient } from "../../../../supabase/server";
 import { redirect } from "next/navigation";
 import MembersClient from "./members-client";
 
-function rolePriority(role?: string) {
-  if (role === "super_admin") return 3;
-  if (role === "admin") return 2;
-  return 1;
-}
-
 export default async function MembersPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
 
-  const { data: memberships } = await supabase
-    .from("company_members")
-    .select("company_id, role, status")
-    .eq("user_id", user.id)
-    .order("created_at", { ascending: false });
-
-  const activeMemberships = (memberships || []).filter((m: any) => m.status === "active");
-  const membership = (activeMemberships.length > 0 ? activeMemberships : (memberships || []))
-    .sort((a: any, b: any) => rolePriority(b.role) - rolePriority(a.role))[0];
   const { data: profile } = await supabase
     .from("users")
-    .select("role")
-    .eq("user_id", user.id)
+    .select("id, role, status")
+    .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .single();
 
-  const effectiveMembership = membership || (profile?.role === "admin"
-    ? { company_id: user.id, role: "admin", status: "active" }
-    : null);
-
-  const isAdmin =
-    effectiveMembership?.role === "admin" ||
-    effectiveMembership?.role === "super_admin" ||
-    profile?.role === "admin";
-  if (!isAdmin || effectiveMembership?.status !== "active") {
+  const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+  if (!isAdmin || profile?.status !== "active") {
     return redirect("/dashboard");
   }
 
-  const { data: companyMembers } = await supabase
-    .from("company_members")
-    .select("user_id, role, status, created_at")
-    .eq("company_id", effectiveMembership.company_id)
-    .order("created_at", { ascending: false });
-
-  const memberIds = (companyMembers || []).map((m) => m.user_id);
   const { data: members } = await supabase
     .from("users")
-    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
-    .in("id", memberIds);
+    .select("id, user_id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
+    .order("created_at", { ascending: false });
 
   const { data: invites } = await supabase
     .from("invites")
     .select("*")
-    .eq("company_id", effectiveMembership.company_id)
     .order("created_at", { ascending: false });
 
   const { data: links } = await supabase
     .from("links")
-    .select("user_id, click_count")
-    .eq("company_id", effectiveMembership.company_id);
+    .select("user_id, click_count");
   const { data: earnings } = await supabase
     .from("earnings")
-    .select("user_id, amount")
-    .eq("company_id", effectiveMembership.company_id);
+    .select("user_id, amount");
 
-  // Fetch real click stats per member using RPC
-  const { data: memberClickStats } = await supabase.rpc("get_member_stats_for_company", {
-    p_company_id: effectiveMembership.company_id,
-  });
+  const { data: memberClickStats } = await supabase
+    .from("click_events")
+    .select("user_id, is_bot, is_filtered, is_unique")
+    .limit(50000);
 
   const clickStatsByUser: Record<string, any> = {};
   for (const s of memberClickStats || []) {
-    clickStatsByUser[s.user_id] = s;
+    if (!s.user_id) continue;
+    const bucket = clickStatsByUser[s.user_id] || { real_clicks: 0, unique_users: 0, bot_excluded: 0, filtered_clicks: 0 };
+    if (s.is_bot) bucket.bot_excluded += 1;
+    if (s.is_filtered) bucket.filtered_clicks += 1;
+    if (!s.is_bot && !s.is_filtered) bucket.real_clicks += 1;
+    if (s.is_unique) bucket.unique_users += 1;
+    clickStatsByUser[s.user_id] = bucket;
   }
-
-  const membershipById: Record<string, any> = {};
-  for (const m of companyMembers || []) membershipById[m.user_id] = m;
 
   const linkStats: Record<string, { linkCount: number; totalClicks: number }> = {};
   for (const l of links || []) {
@@ -96,9 +67,9 @@ export default async function MembersPage() {
 
   const membersWithStats = (members || []).map((m: any) => ({
     ...m,
-    role: membershipById[m.id]?.role || "member",
-    status: membershipById[m.id]?.status || "pending",
-    created_at: membershipById[m.id]?.created_at || m.created_at,
+    role: m.role || "member",
+    status: m.status || "pending",
+    created_at: m.created_at,
     totalClicks: linkStats[m.id]?.totalClicks || 0,
     linkCount: linkStats[m.id]?.linkCount || 0,
     totalEarnings: earningStats[m.id] || 0,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient } from "../../../../../../supabase/admin";
 import { createClient } from "../../../../../../supabase/server";
-import { getApiContext, requireAdmin } from "../../../_lib/api-auth";
+import { getApiContext, requireActiveMembership, requireAdmin } from "../../../_lib/api-auth";
 
 function toCsv(rows: Record<string, any>[], headers: string[]) {
   const esc = (v: any) => {
@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
   try {
     ctx = await getApiContext(req);
     requireAdmin(ctx);
+    requireActiveMembership(ctx);
   } catch (e: any) {
     if (e instanceof Response) return e;
     return NextResponse.json({ error: e?.message || "Unauthorized" }, { status: 401 });
@@ -28,35 +29,19 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: e?.message || "Failed to initialize database client" }, { status: 500 });
   }
 
-  const { data: memberships, error: mErr } = await supabase
-    .from("company_members")
-    .select("user_id, role, status, created_at")
-    .eq("company_id", ctx.companyId);
-  if (mErr) return NextResponse.json({ error: mErr.message }, { status: 400 });
-
-  const userIds = (memberships || []).map((m: any) => m.user_id);
-  if (userIds.length === 0) {
-    return new NextResponse("id,email,display_name,role,status,link_count,total_clicks,total_earnings\n", {
-      headers: {
-        "content-type": "text/csv; charset=utf-8",
-        "content-disposition": `attachment; filename="members-${ctx.companyId}.csv"`,
-      },
-    });
-  }
-
   const [{ data: users, error: uErr }, { data: links, error: lErr }, { data: earnings, error: eErr }] =
     await Promise.all([
-      supabase.from("users").select("id, email, full_name, display_name").in("id", userIds),
-      supabase.from("links").select("user_id, click_count").eq("company_id", ctx.companyId),
-      supabase.from("earnings").select("user_id, amount").eq("company_id", ctx.companyId),
+      supabase
+        .from("users")
+        .select("id, user_id, email, full_name, display_name, role, status, created_at, last_active_at, last_seen_ip")
+        .order("created_at", { ascending: false }),
+      supabase.from("links").select("user_id, click_count"),
+      supabase.from("earnings").select("user_id, amount"),
     ]);
 
   if (uErr || lErr || eErr) {
     return NextResponse.json({ error: uErr?.message || lErr?.message || eErr?.message }, { status: 400 });
   }
-
-  const memberById: Record<string, any> = {};
-  for (const m of memberships || []) memberById[(m as any).user_id] = m;
 
   const linkStats: Record<string, { linkCount: number; totalClicks: number }> = {};
   for (const l of links || []) {
@@ -76,8 +61,11 @@ export async function GET(req: NextRequest) {
     id: u.id,
     email: u.email || "",
     display_name: u.display_name || u.full_name || "",
-    role: memberById[u.id]?.role || "member",
-    status: memberById[u.id]?.status || "pending",
+    role: u.role || "member",
+    status: u.status || "pending",
+    signup_date: u.created_at || "",
+    last_activity: u.last_active_at || "",
+    ip: u.last_seen_ip || "",
     link_count: linkStats[u.id]?.linkCount || 0,
     total_clicks: linkStats[u.id]?.totalClicks || 0,
     total_earnings: (earningStats[u.id] || 0).toFixed(2),
@@ -89,6 +77,9 @@ export async function GET(req: NextRequest) {
     "display_name",
     "role",
     "status",
+    "signup_date",
+    "last_activity",
+    "ip",
     "link_count",
     "total_clicks",
     "total_earnings",
@@ -97,7 +88,7 @@ export async function GET(req: NextRequest) {
   return new NextResponse(csv, {
     headers: {
       "content-type": "text/csv; charset=utf-8",
-      "content-disposition": `attachment; filename="members-${ctx.companyId}.csv"`,
+      "content-disposition": "attachment; filename=\"members-global.csv\"",
     },
   });
 }

@@ -34,7 +34,6 @@ interface MemberAnalyticsClientProps {
   browserData: Array<{ name: string; value: number }>;
   earnings: any[];
   totalEarnings: number;
-  companyId: string;
 }
 
 export default function MemberAnalyticsClient({
@@ -47,7 +46,6 @@ export default function MemberAnalyticsClient({
   browserData,
   earnings,
   totalEarnings,
-  companyId,
 }: MemberAnalyticsClientProps) {
   const [activeTab, setActiveTab] = useState<"overview" | "links" | "geo" | "activity">("overview");
 

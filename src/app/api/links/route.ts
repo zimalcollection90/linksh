@@ -5,7 +5,6 @@ import { createClient } from "../../../../supabase/server";
 
 export async function GET(req: NextRequest) {
   const ctx = await getApiContext(req);
-  requireActiveMembership(ctx);
 
   // Prefer RLS/session mode client when possible.
   const supabase = ctx.authMode === "api_key" ? createAdminClient() : await createClient();
@@ -19,8 +18,6 @@ export async function GET(req: NextRequest) {
       "id, short_code, destination_url, title, click_count, status, expires_at, is_password_protected, utm_source, utm_medium, utm_campaign, utm_term, utm_content"
     )
     .order("created_at", { ascending: false });
-
-  query.eq("company_id", ctx.companyId);
 
   if (ctx.role === "member") {
     query.eq("user_id", ctx.userId);
