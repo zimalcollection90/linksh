@@ -49,7 +49,7 @@ export default async function MembersPage() {
   const memberIds = (companyMembers || []).map((m) => m.user_id);
   const { data: members } = await supabase
     .from("users")
-    .select("*")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
     .in("id", memberIds);
 
   const { data: invites } = await supabase
@@ -66,6 +66,16 @@ export default async function MembersPage() {
     .from("earnings")
     .select("user_id, amount")
     .eq("company_id", effectiveMembership.company_id);
+
+  // Fetch real click stats per member using RPC
+  const { data: memberClickStats } = await supabase.rpc("get_member_stats_for_company", {
+    p_company_id: effectiveMembership.company_id,
+  });
+
+  const clickStatsByUser: Record<string, any> = {};
+  for (const s of memberClickStats || []) {
+    clickStatsByUser[s.user_id] = s;
+  }
 
   const membershipById: Record<string, any> = {};
   for (const m of companyMembers || []) membershipById[m.user_id] = m;
@@ -92,6 +102,10 @@ export default async function MembersPage() {
     totalClicks: linkStats[m.id]?.totalClicks || 0,
     linkCount: linkStats[m.id]?.linkCount || 0,
     totalEarnings: earningStats[m.id] || 0,
+    realClicks: Number(clickStatsByUser[m.id]?.real_clicks) || 0,
+    uniqueUsers: Number(clickStatsByUser[m.id]?.unique_users) || 0,
+    botExcluded: Number(clickStatsByUser[m.id]?.bot_excluded) || 0,
+    filteredClicks: Number(clickStatsByUser[m.id]?.filtered_clicks) || 0,
   }));
 
   return <MembersClient members={membersWithStats} invites={invites || []} />;

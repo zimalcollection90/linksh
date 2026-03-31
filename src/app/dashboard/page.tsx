@@ -104,11 +104,12 @@ export default async function Dashboard() {
   }
 
   let totalLinks = 0, totalClicks = 0, activeMembers = 0;
+  let realClicks = 0, uniqueUsers = 0, filteredClicks = 0, botExcluded = 0;
   let heatmapData: Array<{ code: string; value: number }> = [];
   let trendData: Array<{ date: string; clicks: number; earnings: number }> = [];
 
   if (isAdmin) {
-    const [linksRes, clicksRes, membersRes] = await Promise.all([
+    const [linksRes, clicksRes, membersRes, realClicksRes] = await Promise.all([
       supabase.from("links").select("id", { count: "exact", head: true }).eq("company_id", effectiveMembership.company_id),
       supabase.from("links").select("click_count").eq("company_id", effectiveMembership.company_id),
       supabase
@@ -116,12 +117,20 @@ export default async function Dashboard() {
         .select("id", { count: "exact", head: true })
         .eq("company_id", effectiveMembership.company_id)
         .eq("status", "active"),
+      supabase.rpc("get_company_click_stats", { p_company_id: effectiveMembership.company_id }),
     ]);
     totalLinks = linksRes.count || 0;
     totalClicks = (clicksRes.data || []).reduce((s: number, l: any) => s + (l.click_count || 0), 0);
     activeMembers = membersRes.count || 0;
+    if (realClicksRes.data && realClicksRes.data[0]) {
+      const rs = realClicksRes.data[0];
+      realClicks = Number(rs.real_clicks) || 0;
+      uniqueUsers = Number(rs.unique_users) || 0;
+      filteredClicks = Number(rs.filtered_clicks) || 0;
+      botExcluded = Number(rs.bot_excluded) || 0;
+    }
   } else {
-    const [linksRes, myLinksRes] = await Promise.all([
+    const [linksRes, myLinksRes, realClicksRes] = await Promise.all([
       supabase
         .from("links")
         .select("id", { count: "exact", head: true })
@@ -132,9 +141,17 @@ export default async function Dashboard() {
         .select("click_count")
         .eq("company_id", effectiveMembership.company_id)
         .eq("user_id", userId),
+      userId ? supabase.rpc("get_user_click_stats", { p_user_id: userId }) : Promise.resolve({ data: null }),
     ]);
     totalLinks = linksRes.count || 0;
     totalClicks = (myLinksRes.data || []).reduce((s: number, l: any) => s + (l.click_count || 0), 0);
+    if (realClicksRes.data && realClicksRes.data[0]) {
+      const rs = realClicksRes.data[0];
+      realClicks = Number(rs.real_clicks) || 0;
+      uniqueUsers = Number(rs.unique_users) || 0;
+      filteredClicks = Number(rs.filtered_clicks) || 0;
+      botExcluded = Number(rs.bot_excluded) || 0;
+    }
   }
 
   const recentLinksQuery = isAdmin
@@ -222,6 +239,16 @@ export default async function Dashboard() {
           .select("id, full_name, display_name, email, avatar_url, status")
           .in("id", ids)
       : { data: [] as any[] };
+
+    // Fetch real click stats per member
+    const { data: memberClickStats } = await supabase.rpc("get_member_stats_for_company", {
+      p_company_id: effectiveMembership.company_id,
+    });
+    const clickStatsByUser: Record<string, any> = {};
+    for (const s of memberClickStats || []) {
+      clickStatsByUser[s.user_id] = s;
+    }
+
     if (members) {
       const memberById: Record<string, any> = {};
       for (const m of companyMembers || []) memberById[m.user_id] = m;
@@ -239,6 +266,8 @@ export default async function Dashboard() {
             status: memberById[m.id]?.status || m.status,
             totalClicks: clicks,
             linkCount: links?.length || 0,
+            realClicks: Number(clickStatsByUser[m.id]?.real_clicks) || 0,
+            botExcluded: Number(clickStatsByUser[m.id]?.bot_excluded) || 0,
           };
         })
       );
@@ -252,7 +281,7 @@ export default async function Dashboard() {
   const { data: earningsData } = await earningsQuery;
   const totalEarnings = (earningsData || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
 
-  const stats = { totalLinks, totalClicks, activeMembers, totalEarnings };
+  const stats = { totalLinks, totalClicks, activeMembers, totalEarnings, realClicks, uniqueUsers, filteredClicks, botExcluded };
 
   if (isAdmin) {
     return (

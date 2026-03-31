@@ -10,11 +10,12 @@ import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { UserPlus, Search, Ban, CheckCircle, Mail, Users, MoreHorizontal, Shield, Download } from "lucide-react";
+import { UserPlus, Search, Ban, CheckCircle, Mail, Users, MoreHorizontal, Shield, Download, BarChart2, Clock, Globe, ShieldCheck, Bot, FilterX, UserCheck } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator
 } from "@/components/ui/dropdown-menu";
+import Link from "next/link";
 
 const statusColors: Record<string, string> = {
   active: "bg-green-500/10 text-green-400 border-green-500/20",
@@ -25,18 +26,21 @@ const statusColors: Record<string, string> = {
 export default function MembersClient({ members: initialMembers, invites }: { members: any[]; invites: any[] }) {
   const [members, setMembers] = useState(initialMembers);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("member");
   const [inviting, setInviting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
 
-  const filtered = members.filter((m) =>
-    !search ||
-    m.email?.toLowerCase().includes(search.toLowerCase()) ||
-    m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
-    m.display_name?.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = members.filter((m) => {
+    const matchesSearch = !search ||
+      m.email?.toLowerCase().includes(search.toLowerCase()) ||
+      m.full_name?.toLowerCase().includes(search.toLowerCase()) ||
+      m.display_name?.toLowerCase().includes(search.toLowerCase());
+    const matchesStatus = statusFilter === "all" || m.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   const selectedUserIds = useMemo(
     () => Object.entries(selectedIds).filter(([, checked]) => checked).map(([id]) => id),
@@ -158,11 +162,12 @@ export default function MembersClient({ members: initialMembers, invites }: { me
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: "Total Members", value: members.length, icon: Users, color: "text-primary" },
           { label: "Active", value: members.filter(m => m.status === "active").length, icon: CheckCircle, color: "text-green-400" },
-          { label: "Pending Invites", value: invites.filter(i => i.status === "pending").length, icon: Mail, color: "text-amber-400" },
+          { label: "Pending Approval", value: members.filter(m => m.status === "pending").length, icon: Clock, color: "text-amber-400" },
+          { label: "Pending Invites", value: invites.filter(i => i.status === "pending").length, icon: Mail, color: "text-cyan-400" },
         ].map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="rounded-xl border border-border bg-card p-4 flex items-center gap-3">
@@ -175,15 +180,28 @@ export default function MembersClient({ members: initialMembers, invites }: { me
         ))}
       </div>
 
-      {/* Search */}
-      <div className="relative max-w-xs">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="Search members..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="pl-9 bg-muted/50"
-        />
+      {/* Search and Filter */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative max-w-xs">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Search members..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9 bg-muted/50"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-36 bg-muted/50">
+            <SelectValue placeholder="Filter status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="suspended">Suspended</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex items-center gap-2">
@@ -211,10 +229,16 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">Clicks</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden lg:table-cell">Earnings</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden lg:table-cell">Joined</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden xl:table-cell">Last Active</th>
                 <th className="text-right text-xs font-medium text-muted-foreground px-4 py-3">Actions</th>
               </tr>
             </thead>
             <tbody>
+              {filtered.length === 0 && (
+                <tr>
+                  <td colSpan={9} className="text-center text-sm text-muted-foreground py-12">No members found</td>
+                </tr>
+              )}
               {filtered.map((member, i) => {
                 const name = member.display_name || member.full_name || member.email?.split("@")[0] || "Unknown";
                 const initials = name.slice(0, 2).toUpperCase();
@@ -240,6 +264,9 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                         <div>
                           <p className="text-sm font-medium">{name}</p>
                           <p className="text-xs text-muted-foreground">{member.email}</p>
+                          {member.last_seen_ip && (
+                            <p className="text-[10px] text-muted-foreground/60 font-mono">{member.last_seen_ip}</p>
+                          )}
                         </div>
                       </div>
                     </td>
@@ -257,7 +284,12 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                       <span className="text-sm">{member.linkCount || 0}</span>
                     </td>
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <span className="text-sm">{(member.totalClicks || 0).toLocaleString()}</span>
+                      <div>
+                        <span className="text-sm">{(member.totalClicks || 0).toLocaleString()}</span>
+                        {member.realClicks !== undefined && (
+                          <p className="text-[10px] text-green-400">{member.realClicks.toLocaleString()} real</p>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-sm text-green-400">${(member.totalEarnings || 0).toFixed(2)}</span>
@@ -267,28 +299,53 @@ export default function MembersClient({ members: initialMembers, invites }: { me
                         {member.created_at ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true }) : "—"}
                       </span>
                     </td>
+                    <td className="px-4 py-3 hidden xl:table-cell">
+                      <span className="text-xs text-muted-foreground">
+                        {member.last_active_at ? formatDistanceToNow(new Date(member.last_active_at), { addSuffix: true }) : "—"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">
-                      <div className="flex justify-end">
+                      <div className="flex justify-end gap-1">
+                        <Link
+                          href={`/dashboard/members/${member.id}`}
+                          className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all"
+                          title="View Analytics"
+                        >
+                          <BarChart2 className="w-4 h-4" />
+                        </Link>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <button className="w-7 h-7 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted transition-all">
                               <MoreHorizontal className="w-4 h-4" />
                             </button>
                           </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-48">
+                          <DropdownMenuContent align="end" className="w-52">
+                            <DropdownMenuItem asChild className="gap-2">
+                              <Link href={`/dashboard/members/${member.id}`}>
+                                <BarChart2 className="w-3.5 h-3.5" />
+                                View Analytics
+                              </Link>
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            {member.status === "pending" && (
+                              <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "active")} className="gap-2 text-green-400 focus:text-green-400">
+                                <CheckCircle className="w-3.5 h-3.5" /> Approve Member
+                              </DropdownMenuItem>
+                            )}
                             <DropdownMenuItem onClick={() => handleUpdateRole(member.id, member.role === "admin" ? "member" : "admin")} className="gap-2">
                               <Shield className="w-3.5 h-3.5" />
                               {member.role === "admin" ? "Demote to Member" : "Promote to Admin"}
                             </DropdownMenuItem>
+                            <DropdownMenuSeparator />
                             {member.status === "active" ? (
                               <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "suspended")} className="gap-2 text-red-400 focus:text-red-400">
                                 <Ban className="w-3.5 h-3.5" /> Suspend
                               </DropdownMenuItem>
-                            ) : (
+                            ) : member.status === "suspended" ? (
                               <DropdownMenuItem onClick={() => handleUpdateStatus(member.id, "active")} className="gap-2 text-green-400 focus:text-green-400">
-                                <CheckCircle className="w-3.5 h-3.5" /> Activate
+                                <CheckCircle className="w-3.5 h-3.5" /> Reactivate
                               </DropdownMenuItem>
-                            )}
+                            ) : null}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>

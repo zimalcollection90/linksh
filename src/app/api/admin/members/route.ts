@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
   const { data: users, error: uErr } = await supabase
     .from("users")
-    .select("id, full_name, display_name, email, avatar_url, status, role, created_at")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
     .order("created_at", { ascending: false });
 
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 400 });
@@ -45,6 +45,15 @@ export async function GET(req: NextRequest) {
     .select("user_id, amount")
     .eq("company_id", ctx.companyId);
   if (eErr) return NextResponse.json({ error: eErr.message }, { status: 400 });
+
+  // Fetch real click stats per member
+  const { data: memberClickStats } = await supabase.rpc("get_member_stats_for_company", {
+    p_company_id: ctx.companyId,
+  });
+  const clickStatsByUser: Record<string, any> = {};
+  for (const s of memberClickStats || []) {
+    clickStatsByUser[s.user_id] = s;
+  }
 
   const memberById: Record<string, any> = {};
   for (const m of memberships || []) {
@@ -74,6 +83,10 @@ export async function GET(req: NextRequest) {
     totalClicks: linkStats[u.id]?.totalClicks || 0,
     totalEarnings: earningStats[u.id] || 0,
     isInCompany: !!memberById[u.id],
+    realClicks: Number(clickStatsByUser[u.id]?.real_clicks) || 0,
+    uniqueUsers: Number(clickStatsByUser[u.id]?.unique_users) || 0,
+    botExcluded: Number(clickStatsByUser[u.id]?.bot_excluded) || 0,
+    filteredClicks: Number(clickStatsByUser[u.id]?.filtered_clicks) || 0,
   }));
 
   return NextResponse.json({ members });

@@ -104,9 +104,11 @@ export type Database = {
           country: string | null
           country_code: string | null
           device_type: string | null
+          filter_reason: string | null
           id: string
           ip_address: string | null
           is_bot: boolean | null
+          is_filtered: boolean | null
           is_unique: boolean | null
           link_id: string
           os: string | null
@@ -122,9 +124,11 @@ export type Database = {
           country?: string | null
           country_code?: string | null
           device_type?: string | null
+          filter_reason?: string | null
           id?: string
           ip_address?: string | null
           is_bot?: boolean | null
+          is_filtered?: boolean | null
           is_unique?: boolean | null
           link_id: string
           os?: string | null
@@ -140,9 +144,11 @@ export type Database = {
           country?: string | null
           country_code?: string | null
           device_type?: string | null
+          filter_reason?: string | null
           id?: string
           ip_address?: string | null
           is_bot?: boolean | null
+          is_filtered?: boolean | null
           is_unique?: boolean | null
           link_id?: string
           os?: string | null
@@ -432,6 +438,8 @@ export type Database = {
           full_name: string | null
           id: string
           image: string | null
+          last_active_at: string | null
+          last_seen_ip: string | null
           name: string | null
           role: string | null
           status: string | null
@@ -452,6 +460,8 @@ export type Database = {
           full_name?: string | null
           id: string
           image?: string | null
+          last_active_at?: string | null
+          last_seen_ip?: string | null
           name?: string | null
           role?: string | null
           status?: string | null
@@ -472,6 +482,8 @@ export type Database = {
           full_name?: string | null
           id?: string
           image?: string | null
+          last_active_at?: string | null
+          last_seen_ip?: string | null
           name?: string | null
           role?: string | null
           status?: string | null
@@ -488,7 +500,66 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_company_click_stats: {
+        Args: { p_company_id: string }
+        Returns: {
+          bot_excluded: number
+          filtered_clicks: number
+          real_clicks: number
+          total_clicks: number
+          unique_users: number
+        }[]
+      }
+      get_member_stats_for_company: {
+        Args: { p_company_id: string }
+        Returns: {
+          bot_excluded: number
+          filtered_clicks: number
+          link_count: number
+          real_clicks: number
+          total_clicks: number
+          unique_users: number
+          user_id: string
+        }[]
+      }
+      get_user_click_stats: {
+        Args: { p_user_id: string }
+        Returns: {
+          bot_excluded: number
+          filtered_clicks: number
+          real_clicks: number
+          total_clicks: number
+          unique_users: number
+        }[]
+      }
+      get_user_daily_clicks: {
+        Args: { p_days?: number; p_user_id: string }
+        Returns: {
+          bots: number
+          day: string
+          real_clicks: number
+          total: number
+          unique_users: number
+        }[]
+      }
       increment_link_clicks: { Args: { link_id: string }; Returns: undefined }
+      resolve_link_and_log_click: {
+        Args: {
+          p_browser: string
+          p_code: string
+          p_device_type: string
+          p_ip: string
+          p_os: string
+          p_password?: string
+          p_referrer: string
+          p_user_agent: string
+        }
+        Returns: {
+          click_event_id: string
+          destination_url: string
+          requires_password: boolean
+        }[]
+      }
     }
     Enums: {
       [_ in never]: never
