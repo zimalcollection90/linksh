@@ -7,6 +7,7 @@ import TrendCharts from "./trend-charts";
 import MemberLeaderboard from "./member-leaderboard";
 import RecentLinks from "./recent-links";
 import WorldHeatmap from "./world-heatmap";
+import TopCountries from "./top-countries";
 import { motion } from "framer-motion";
 
 interface AdminDashboardProps {
@@ -23,6 +24,7 @@ interface AdminDashboardProps {
   heatmapData: Array<{ code: string; value: number }>;
   trendData?: Array<{ date: string; clicks: number; earnings: number }>;
   monthlyGoal?: number;
+  topCountries?: Array<{ country: string; country_code: string; click_count: number }>;
 }
 
 export default function AdminDashboard({
@@ -34,6 +36,7 @@ export default function AdminDashboard({
   heatmapData,
   trendData,
   monthlyGoal,
+  topCountries = [],
 }: AdminDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "Admin";
 
@@ -67,11 +70,14 @@ export default function AdminDashboard({
       {/* Geo distribution */}
       <WorldHeatmap data={heatmapData} />
 
-      {/* Leaderboard + Recent Links */}
+      {/* Top Countries + Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <TopCountries data={topCountries} title="Top Countries (Real Clicks)" />
         <MemberLeaderboard members={topMembers} />
-        <RecentLinks links={recentLinks} />
       </div>
+
+      {/* Recent Links */}
+      <RecentLinks links={recentLinks} />
     </div>
   );
 }

@@ -25,7 +25,7 @@ const deviceIcon = (type?: string) => {
 };
 
 const countryFlag = (code?: string) => {
-  if (!code) return "🌍";
+  if (!code || code === "XX" || code.length !== 2) return "🌍";
   try {
     return code.toUpperCase().replace(/./g, (char) =>
       String.fromCodePoint(127397 + char.charCodeAt(0))
@@ -119,7 +119,7 @@ export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
                     {click.links?.title || `/${click.links?.short_code || "link"}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {click.country || "Unknown"} · {click.clicked_at && !isNaN(new Date(click.clicked_at).getTime()) ? formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true }) : "just now"}
+                    {click.country && click.country !== "Unknown" ? click.country : (click.country_code && click.country_code !== "XX" ? click.country_code : "Unknown Origin")} · {click.clicked_at && !isNaN(new Date(click.clicked_at).getTime()) ? formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true }) : "just now"}
                   </p>
                 </div>
                 {deviceIcon(click.device_type)}

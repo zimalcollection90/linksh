@@ -78,6 +78,7 @@ export default async function Dashboard() {
   let realClicks = 0, uniqueUsers = 0, filteredClicks = 0, botExcluded = 0;
   let heatmapData: Array<{ code: string; value: number }> = [];
   let trendData: Array<{ date: string; clicks: number; earnings: number }> = [];
+  let topCountries: Array<{ country: string; country_code: string; click_count: number }> = [];
 
   if (isAdmin) {
     const [linksRes, clicksRes, membersRes, clickEventsRes] = await Promise.all([
@@ -110,6 +111,31 @@ export default async function Dashboard() {
       filteredClicks = Number(rs.filtered_clicks) || 0;
       botExcluded = Number(rs.bot_excluded) || 0;
     }
+
+    // Fetch top countries for member
+    if (userId) {
+      const { data: memberCountryClicks } = await supabase
+        .from("click_events")
+        .select("country, country_code")
+        .eq("user_id", userId)
+        .eq("is_bot", false)
+        .eq("is_filtered", false)
+        .eq("is_unique", true)
+        .not("country", "is", null)
+        .limit(5000);
+
+      const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
+      for (const row of memberCountryClicks || []) {
+        const name = row.country || "Unknown";
+        const code = (row.country_code || "XX").toUpperCase();
+        const key = code;
+        if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: code, click_count: 0 };
+        countryCounts[key].click_count++;
+      }
+      topCountries = Object.values(countryCounts)
+        .sort((a, b) => b.click_count - a.click_count)
+        .slice(0, 10);
+    }
   }
 
   const recentLinksQuery = isAdmin
@@ -141,13 +167,16 @@ export default async function Dashboard() {
     const { data: heatmapClicks } = await supabase
       .from("click_events")
       .select("country_code")
+      .not("country_code", "is", null)
+      .eq("is_bot", false)
+      .eq("is_filtered", false)
       .order("clicked_at", { ascending: false })
-      .limit(2000);
+      .limit(5000);
 
     const counts: Record<string, number> = {};
     for (const row of heatmapClicks || []) {
       const code = row?.country_code?.toString().toUpperCase();
-      if (!code) continue;
+      if (!code || code === "XX" || code.length !== 2) continue;
       counts[code] = (counts[code] || 0) + 1;
     }
     heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
@@ -161,6 +190,8 @@ export default async function Dashboard() {
   let trendQuery = supabase
     .from("click_events")
     .select("clicked_at")
+    .eq("is_bot", false)
+    .eq("is_filtered", false)
     .gte("clicked_at", start.toISOString())
     .order("clicked_at", { ascending: true })
     .limit(5000);
@@ -211,7 +242,30 @@ export default async function Dashboard() {
   });
 
   let topMembers: any[] = [];
+
   if (isAdmin) {
+    // Fetch top countries for admin — direct query for platform-wide data
+    const { data: countryClicks } = await supabase
+      .from("click_events")
+      .select("country, country_code")
+      .eq("is_bot", false)
+      .eq("is_filtered", false)
+      .eq("is_unique", true)
+      .not("country", "is", null)
+      .limit(10000);
+
+    const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
+    for (const row of countryClicks || []) {
+      const name = row.country || "Unknown";
+      const code = (row.country_code || "XX").toUpperCase();
+      const key = code;
+      if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: code, click_count: 0 };
+      countryCounts[key].click_count++;
+    }
+    topCountries = Object.values(countryCounts)
+      .sort((a, b) => b.click_count - a.click_count)
+      .slice(0, 15);
+
     const { data: members } = await supabase
       .from("users")
       .select("id, full_name, display_name, email, avatar_url, status, role")
@@ -288,6 +342,7 @@ export default async function Dashboard() {
         heatmapData={heatmapData}
         trendData={trendData}
         monthlyGoal={monthlyGoal}
+        topCountries={topCountries}
       />
     );
   }
@@ -300,6 +355,7 @@ export default async function Dashboard() {
       trendData={trendData}
       monthlyGoal={monthlyGoal}
       monthlyClicks={monthlyClicks}
+      topCountries={topCountries}
     />
   );
 }

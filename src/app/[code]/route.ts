@@ -2,10 +2,12 @@ import { NextRequest } from "next/server";
 import { createAdminClient } from "../../../supabase/admin";
 import { createClient } from "../../../supabase/server";
 
+// Country code to country name map for offline fallback
+const CC_TO_COUNTRY: Record<string, string> = {
+  AF:"Afghanistan",AL:"Albania",DZ:"Algeria",AD:"Andorra",AO:"Angola",AG:"Antigua and Barbuda",AR:"Argentina",AM:"Armenia",AU:"Australia",AT:"Austria",AZ:"Azerbaijan",BS:"Bahamas",BH:"Bahrain",BD:"Bangladesh",BB:"Barbados",BY:"Belarus",BE:"Belgium",BZ:"Belize",BJ:"Benin",BT:"Bhutan",BO:"Bolivia",BA:"Bosnia and Herzegovina",BW:"Botswana",BR:"Brazil",BN:"Brunei",BG:"Bulgaria",BF:"Burkina Faso",BI:"Burundi",CV:"Cabo Verde",KH:"Cambodia",CM:"Cameroon",CA:"Canada",CF:"Central African Republic",TD:"Chad",CL:"Chile",CN:"China",CO:"Colombia",KM:"Comoros",CD:"Congo (DRC)",CG:"Congo",CR:"Costa Rica",HR:"Croatia",CU:"Cuba",CY:"Cyprus",CZ:"Czech Republic",DK:"Denmark",DJ:"Djibouti",DM:"Dominica",DO:"Dominican Republic",EC:"Ecuador",EG:"Egypt",SV:"El Salvador",GQ:"Equatorial Guinea",ER:"Eritrea",EE:"Estonia",SZ:"Eswatini",ET:"Ethiopia",FJ:"Fiji",FI:"Finland",FR:"France",GA:"Gabon",GM:"Gambia",GE:"Georgia",DE:"Germany",GH:"Ghana",GR:"Greece",GD:"Grenada",GT:"Guatemala",GN:"Guinea",GW:"Guinea-Bissau",GY:"Guyana",HT:"Haiti",HN:"Honduras",HU:"Hungary",IS:"Iceland",IN:"India",ID:"Indonesia",IR:"Iran",IQ:"Iraq",IE:"Ireland",IL:"Israel",IT:"Italy",JM:"Jamaica",JP:"Japan",JO:"Jordan",KZ:"Kazakhstan",KE:"Kenya",KI:"Kiribati",KW:"Kuwait",KG:"Kyrgyzstan",LA:"Laos",LV:"Latvia",LB:"Lebanon",LS:"Lesotho",LR:"Liberia",LY:"Libya",LI:"Liechtenstein",LT:"Lithuania",LU:"Luxembourg",MG:"Madagascar",MW:"Malawi",MY:"Malaysia",MV:"Maldives",ML:"Mali",MT:"Malta",MH:"Marshall Islands",MR:"Mauritania",MU:"Mauritius",MX:"Mexico",FM:"Micronesia",MD:"Moldova",MC:"Monaco",MN:"Mongolia",ME:"Montenegro",MA:"Morocco",MZ:"Mozambique",MM:"Myanmar",NA:"Namibia",NR:"Nauru",NP:"Nepal",NL:"Netherlands",NZ:"New Zealand",NI:"Nicaragua",NE:"Niger",NG:"Nigeria",NO:"Norway",OM:"Oman",PK:"Pakistan",PW:"Palau",PA:"Panama",PG:"Papua New Guinea",PY:"Paraguay",PE:"Peru",PH:"Philippines",PL:"Poland",PT:"Portugal",QA:"Qatar",RO:"Romania",RU:"Russia",RW:"Rwanda",KN:"Saint Kitts and Nevis",LC:"Saint Lucia",VC:"Saint Vincent and the Grenadines",WS:"Samoa",SM:"San Marino",ST:"Sao Tome and Principe",SA:"Saudi Arabia",SN:"Senegal",RS:"Serbia",SC:"Seychelles",SL:"Sierra Leone",SG:"Singapore",SK:"Slovakia",SI:"Slovenia",SB:"Solomon Islands",SO:"Somalia",ZA:"South Africa",SS:"South Sudan",ES:"Spain",LK:"Sri Lanka",SD:"Sudan",SR:"Suriname",SE:"Sweden",CH:"Switzerland",SY:"Syria",TW:"Taiwan",TJ:"Tajikistan",TZ:"Tanzania",TH:"Thailand",TL:"Timor-Leste",TG:"Togo",TO:"Tonga",TT:"Trinidad and Tobago",TN:"Tunisia",TR:"Turkey",TM:"Turkmenistan",TV:"Tuvalu",UG:"Uganda",UA:"Ukraine",AE:"United Arab Emirates",GB:"United Kingdom",US:"United States",UY:"Uruguay",UZ:"Uzbekistan",VU:"Vanuatu",VE:"Venezuela",VN:"Vietnam",YE:"Yemen",ZM:"Zambia",ZW:"Zimbabwe",
+};
+
 const isSkipCode = (code: string) => {
-  // `/[code]` only matches a single path segment like `/<code>`.
-  // Skip only real one-segment app routes to avoid false positives for
-  // random/custom aliases (e.g. an alias starting with "api").
   return (
     code === "tempobook" ||
     code === "dashboard" ||
@@ -28,7 +30,7 @@ function detectBrowser(userAgent: string) {
   if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) return "Safari";
   if (/edge|edg/i.test(userAgent)) return "Edge";
   if (/opera|opr/i.test(userAgent)) return "Opera";
-  return "Unknown";
+  return "Other";
 }
 
 function detectOS(userAgent: string) {
@@ -37,7 +39,7 @@ function detectOS(userAgent: string) {
   if (/linux/i.test(userAgent)) return "Linux";
   if (/android/i.test(userAgent)) return "Android";
   if (/ios|iphone|ipad/i.test(userAgent)) return "iOS";
-  return "Unknown";
+  return "Other";
 }
 
 function normalizeCode(rawCode: string) {
@@ -46,6 +48,73 @@ function normalizeCode(rawCode: string) {
 
 function isValidShortCode(code: string) {
   return /^[A-Za-z0-9_-]{3,64}$/.test(code);
+}
+
+/**
+ * Resolve GeoIP using multiple fallback services.
+ */
+async function resolveGeoIP(ip: string): Promise<{ country: string | null; countryCode: string | null; city: string | null }> {
+  const result = { country: null as string | null, countryCode: null as string | null, city: null as string | null };
+
+  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip.startsWith("10.") || ip.startsWith("192.168.") || ip.length < 7) {
+    return result;
+  }
+
+  // Try ipapi.co first
+  try {
+    const resp = await fetch(`https://ipapi.co/${encodeURIComponent(ip)}/json/`, {
+      headers: { Accept: "application/json", "User-Agent": "shortlink-tracker/1.0" },
+      signal: AbortSignal.timeout(1200),
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data && !data.error) {
+        const cc = (data.country_code || "").toUpperCase();
+        result.countryCode = cc || null;
+        result.country = data.country_name || (cc ? CC_TO_COUNTRY[cc] : null) || null;
+        result.city = data.city || null;
+        if (result.country) return result;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // Fallback: ip-api.com
+  try {
+    const resp = await fetch(`http://ip-api.com/json/${encodeURIComponent(ip)}?fields=country,countryCode,city,status`, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(1200),
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data && data.status === "success") {
+        const cc = (data.countryCode || "").toUpperCase();
+        result.countryCode = cc || null;
+        result.country = data.country || (cc ? CC_TO_COUNTRY[cc] : null) || null;
+        result.city = data.city || null;
+        if (result.country) return result;
+      }
+    }
+  } catch { /* fall through */ }
+
+  return result;
+}
+
+/**
+ * Async geo enrichment: update the click_event row after redirect has been sent.
+ */
+async function enrichClickGeoAsync(clickEventId: string, ip: string) {
+  try {
+    const geo = await resolveGeoIP(ip);
+    if (!geo.countryCode && !geo.country) return;
+    const adminClient = createAdminClient();
+    await adminClient
+      .from("click_events")
+      .update({ country: geo.country, country_code: geo.countryCode, city: geo.city })
+      .eq("id", clickEventId)
+      .is("country", null);
+  } catch (err: any) {
+    console.error("[redirect] geo enrich failed:", err?.message);
+  }
 }
 
 function redirectResponse(destinationUrl: string) {
@@ -115,22 +184,11 @@ async function resolveLinkFallback(code: string): Promise<FallbackResolvedLink |
     .eq("status", "active")
     .maybeSingle();
 
-  if (error) {
-    console.error("[redirect] fallback resolve query failed", {
-      code,
-      errorCode: error.code,
-      errorMessage: error.message,
-    });
-    return null;
-  }
-
-  if (!data) return null;
+  if (error || !data) return null;
 
   if (data.expires_at) {
     const expiresAtMs = Date.parse(data.expires_at);
-    if (!Number.isNaN(expiresAtMs) && expiresAtMs <= Date.now()) {
-      return null;
-    }
+    if (!Number.isNaN(expiresAtMs) && expiresAtMs <= Date.now()) return null;
   }
 
   return data as FallbackResolvedLink;
@@ -140,15 +198,14 @@ async function logClickFallbackAsync(args: {
   linkId: string;
   userId: string | null;
   ip: string | null;
-  country: string;
-  countryCode: string;
-  city: string;
+  country: string | null;
+  countryCode: string | null;
+  city: string | null;
   userAgent: string;
   referer: string | null;
   deviceType: string;
   browser: string;
   os: string;
-  requestUrl: string;
 }) {
   let adminClient;
   try {
@@ -173,7 +230,7 @@ async function logClickFallbackAsync(args: {
   }
 
   let ipClickedLast24h = false;
-  if (args.ip && !isSelfClick) {
+  if (args.ip && !isSelfClick && !isBot) {
     const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     const { data: priorClick } = await adminClient
       .from("click_events")
@@ -181,62 +238,41 @@ async function logClickFallbackAsync(args: {
       .eq("link_id", args.linkId)
       .eq("ip_address", args.ip)
       .gte("clicked_at", sinceIso)
+      .eq("is_unique", true)
       .maybeSingle();
     ipClickedLast24h = Boolean(priorClick);
   }
 
   const isUnique = Boolean(args.ip) && !isBot && !isSelfClick && !ipClickedLast24h;
+  const isFiltered = isBot || isSelfClick || ipClickedLast24h;
+  const filterReason = isBot ? "bot" : isSelfClick ? "self_click" : ipClickedLast24h ? "duplicate_ip_24h" : null;
 
-  const payload = {
-    link_id: args.linkId,
-    user_id: args.userId,
-    ip_address: args.ip,
-    country: args.country,
-    country_code: args.countryCode,
-    city: args.city,
-    device_type: args.deviceType,
-    browser: args.browser,
-    os: args.os,
-    referrer: args.referer,
-    user_agent: args.userAgent,
-    is_unique: isUnique,
-    is_bot: isBot,
-    quality_score: isBot ? 0 : 100,
-  };
-
-  const { data: clickData, error: clickError } = await adminClient
+  const { data: clickData } = await adminClient
     .from("click_events")
-    .insert(payload)
+    .insert({
+      link_id: args.linkId,
+      user_id: args.userId,
+      ip_address: args.ip,
+      country: args.country,
+      country_code: args.countryCode,
+      city: args.city,
+      device_type: args.deviceType,
+      browser: args.browser,
+      os: args.os,
+      referrer: args.referer,
+      user_agent: args.userAgent,
+      is_unique: isUnique,
+      is_bot: isBot,
+      is_filtered: isFiltered,
+      filter_reason: filterReason,
+      quality_score: isBot ? 0 : isSelfClick ? 10 : ipClickedLast24h ? 30 : 100,
+    })
     .select("id")
     .single();
 
-  if (clickError) {
-    console.error("[redirect] fallback click logging failed", {
-      linkId: args.linkId,
-      errorCode: clickError.code,
-      errorMessage: clickError.message,
-    });
-    return;
-  }
+  if (!isUnique || !clickData?.id) return;
 
-  const clickEventId = clickData?.id ?? null;
-
-  // Removed fire-and-forget logic: GeoIP data is populated immediately beforehand.
-
-  if (!payload.is_unique) return;
-
-  const { error: countError } = await adminClient.rpc("increment_link_clicks", {
-    link_id: args.linkId,
-  });
-
-  if (countError) {
-    console.error("[redirect] fallback click-count increment failed", {
-      linkId: args.linkId,
-      clickEventId,
-      errorCode: countError.code,
-      errorMessage: countError.message,
-    });
-  }
+  await adminClient.rpc("increment_link_clicks", { link_id: args.linkId }).catch(() => {});
 }
 
 export async function GET(
@@ -262,44 +298,21 @@ export async function GET(
   const browser = detectBrowser(userAgent);
   const os = detectOS(userAgent);
 
-  let country = "Unknown";
-  let countryCode = "Unknown";
-  let city = "Unknown";
+  // Extract geo from CDN/edge headers (Vercel, Cloudflare) — zero latency
+  const cfCountry = request.headers.get("cf-ipcountry");
+  const vercelCountry = request.headers.get("x-vercel-ip-country");
+  const vercelCity = request.headers.get("x-vercel-ip-city");
+  const cfCity = request.headers.get("cf-ipcity");
 
-  if (ip && ip.length > 7 && ip !== "127.0.0.1" && ip !== "::1") {
-    try {
-      let geoUrl: URL;
-      const template = process.env.GEOIP_API_URL_TEMPLATE;
-      if (template && template.includes("{{ip}}")) {
-        geoUrl = new URL(template.replaceAll("{{ip}}", encodeURIComponent(ip)));
-      } else {
-        // Default to ipapi.co
-        geoUrl = new URL(`https://ipapi.co/${encodeURIComponent(ip)}/json/`);
-      }
+  const edgeCountryCode = (cfCountry || vercelCountry || "").toUpperCase() || null;
+  const edgeCountry = edgeCountryCode ? (CC_TO_COUNTRY[edgeCountryCode] || null) : null;
+  const edgeCity = vercelCity ? decodeURIComponent(vercelCity) : cfCity || null;
 
-      const apiKey = process.env.GEOIP_API_KEY;
-      if (apiKey) {
-        const keyParam = process.env.GEOIP_API_KEY_QUERY_PARAM || "key";
-        geoUrl.searchParams.set(keyParam, apiKey);
-      }
-
-      const resp = await fetch(geoUrl.toString(), {
-        headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(800), // Max 800ms
-      }).catch(() => null);
-
-      if (resp && resp.ok) {
-        const geoData = await resp.json().catch(() => null);
-        if (geoData) {
-          country = geoData.country_name || geoData.country || "Unknown";
-          countryCode = geoData.country_code || geoData.countryCode || "Unknown";
-          city = geoData.city || "Unknown";
-        }
-      }
-    } catch (err: any) {
-      console.error("[redirect] geoip enrichment error", err.message);
-    }
-  }
+  // Use edge headers if available (instant), otherwise skip geo for now (async later)
+  const hasEdgeGeo = Boolean(edgeCountryCode && edgeCountry);
+  const country = hasEdgeGeo ? edgeCountry : null;
+  const countryCode = hasEdgeGeo ? edgeCountryCode : null;
+  const city = hasEdgeGeo ? edgeCity : null;
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("resolve_link_and_log_click", {
@@ -344,20 +357,31 @@ export async function GET(
       }
     }
 
-    void logClickFallbackAsync({
-      linkId: fallbackLink.id,
-      userId: fallbackLink.user_id,
-      ip,
-      country,
-      countryCode,
-      city,
-      userAgent,
-      referer,
-      deviceType,
-      browser,
-      os,
-      requestUrl: request.url,
-    });
+    // Fire-and-forget: log click with async geo resolution
+    void (async () => {
+      let geoCountry = country;
+      let geoCountryCode = countryCode;
+      let geoCity = city;
+      if (!hasEdgeGeo && ip) {
+        const geo = await resolveGeoIP(ip);
+        geoCountry = geo.country;
+        geoCountryCode = geo.countryCode;
+        geoCity = geo.city;
+      }
+      await logClickFallbackAsync({
+        linkId: fallbackLink.id,
+        userId: fallbackLink.user_id,
+        ip,
+        country: geoCountry,
+        countryCode: geoCountryCode,
+        city: geoCity,
+        userAgent,
+        referer,
+        deviceType,
+        browser,
+        os,
+      });
+    })();
 
     return redirectResponse(fallbackLink.destination_url);
   }
@@ -375,7 +399,10 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  // Removed fire-and-forget: we fetched GeoIP synchronously and inserted it via the RPC instead.
+  // If no edge geo headers available, enrich geo async after redirect
+  if (clickEventId && !hasEdgeGeo && ip) {
+    void enrichClickGeoAsync(clickEventId, ip);
+  }
 
   return redirectResponse(destinationUrl);
 }

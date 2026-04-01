@@ -20,12 +20,16 @@ import WorldHeatmap from "../../components/world-heatmap";
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#F59E0B"];
 
 function getFlagEmoji(countryCode?: string) {
-  if (!countryCode || countryCode === "Unknown" || countryCode.length !== 2) return "🌐";
-  const codePoints = countryCode
-    .toUpperCase()
-    .split("")
-    .map(char => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
+  if (!countryCode || countryCode === "Unknown" || countryCode === "XX" || countryCode.length !== 2) return "🌐";
+  try {
+    const codePoints = countryCode
+      .toUpperCase()
+      .split("")
+      .map(char => 127397 + char.charCodeAt(0));
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return "🌐";
+  }
 }
 
 interface MemberAnalyticsClientProps {

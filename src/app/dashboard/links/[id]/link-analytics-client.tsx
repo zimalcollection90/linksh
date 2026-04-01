@@ -17,12 +17,16 @@ import WorldHeatmap from "../../components/world-heatmap";
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8"];
 
 function getFlagEmoji(countryCode: string) {
-  if (!countryCode || countryCode === "Unknown" || countryCode.length !== 2) return "🌐";
-  const codePoints = countryCode
-    .toUpperCase()
-    .split("")
-    .map(char => 127397 + char.charCodeAt(0));
-  return String.fromCodePoint(...codePoints);
+  if (!countryCode || countryCode === "Unknown" || countryCode === "XX" || countryCode.length !== 2) return "🌐";
+  try {
+    const codePoints = countryCode
+      .toUpperCase()
+      .split("")
+      .map(char => 127397 + char.charCodeAt(0));
+    return String.fromCodePoint(...codePoints);
+  } catch {
+    return "🌐";
+  }
 }
 
 interface ClickEvent {
@@ -80,20 +84,22 @@ function processCountryData(clicks: ClickEvent[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks.forEach((c) => {
     const name = c.country || "Unknown";
-    const code = c.country_code || "Unknown";
-    if (!counts[name]) counts[name] = { value: 0, code, name };
-    counts[name].value++;
+    const code = (c.country_code || "XX").toUpperCase();
+    const key = code !== "XX" ? code : name;
+    if (!counts[key]) counts[key] = { value: 0, code, name };
+    counts[key].value++;
   });
   return Object.values(counts)
     .sort((a, b) => b.value - a.value)
-    .slice(0, 6);
+    .slice(0, 8);
 }
 
 function processHeatmapData(clicks: ClickEvent[]) {
   const counts: Record<string, number> = {};
   clicks.forEach((c) => {
-    if (c.country_code && c.country_code !== "Unknown") {
-      counts[c.country_code] = (counts[c.country_code] || 0) + 1;
+    const code = (c.country_code || "").toUpperCase();
+    if (code && code !== "XX" && code.length === 2) {
+      counts[code] = (counts[code] || 0) + 1;
     }
   });
   return Object.entries(counts).map(([code, value]) => ({ code, value }));

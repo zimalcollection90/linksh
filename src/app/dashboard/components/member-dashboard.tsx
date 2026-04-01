@@ -4,6 +4,7 @@ import React from "react";
 import KpiStats from "./kpi-stats";
 import RecentLinks from "./recent-links";
 import TrendCharts from "./trend-charts";
+import TopCountries from "./top-countries";
 import { motion } from "framer-motion";
 import { Progress } from "@/components/ui/progress";
 import { Target } from "lucide-react";
@@ -20,9 +21,10 @@ interface MemberDashboardProps {
   trendData?: Array<{ date: string; clicks: number; earnings: number }>;
   monthlyGoal?: number;
   monthlyClicks?: number;
+  topCountries?: Array<{ country: string; country_code: string; click_count: number }>;
 }
 
-export default function MemberDashboard({ stats, recentLinks, profile, trendData, monthlyGoal = 1000, monthlyClicks = 0 }: MemberDashboardProps) {
+export default function MemberDashboard({ stats, recentLinks, profile, trendData, monthlyGoal = 1000, monthlyClicks = 0, topCountries = [] }: MemberDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "there";
   const goalClicks = monthlyGoal;
   const progress = Math.min((monthlyClicks / goalClicks) * 100, 100);
@@ -69,6 +71,9 @@ export default function MemberDashboard({ stats, recentLinks, profile, trendData
         <TrendCharts data={trendData} />
         <RecentLinks links={recentLinks} />
       </div>
+
+      {/* Top Countries */}
+      <TopCountries data={topCountries} title="Your Top Traffic Countries" />
     </div>
   );
 }

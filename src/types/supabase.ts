@@ -426,6 +426,30 @@ export type Database = {
           },
         ]
       }
+      site_settings: {
+        Row: {
+          description: string | null
+          id: string
+          key: string
+          updated_at: string | null
+          value: string
+        }
+        Insert: {
+          description?: string | null
+          id?: string
+          key: string
+          updated_at?: string | null
+          value: string
+        }
+        Update: {
+          description?: string | null
+          id?: string
+          key?: string
+          updated_at?: string | null
+          value?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           accent_color: string | null
@@ -510,6 +534,14 @@ export type Database = {
           unique_users: number
         }[]
       }
+      get_company_top_countries: {
+        Args: { p_company_id: string; p_limit?: number }
+        Returns: {
+          click_count: number
+          country: string
+          country_code: string
+        }[]
+      }
       get_member_stats_for_company: {
         Args: { p_company_id: string }
         Returns: {
@@ -542,24 +574,55 @@ export type Database = {
           unique_users: number
         }[]
       }
-      increment_link_clicks: { Args: { link_id: string }; Returns: undefined }
-      resolve_link_and_log_click: {
-        Args: {
-          p_browser: string
-          p_code: string
-          p_device_type: string
-          p_ip: string
-          p_os: string
-          p_password?: string
-          p_referrer: string
-          p_user_agent: string
-        }
+      get_user_top_countries: {
+        Args: { p_limit?: number; p_user_id: string }
         Returns: {
-          click_event_id: string
-          destination_url: string
-          requires_password: boolean
+          click_count: number
+          country: string
+          country_code: string
         }[]
       }
+      increment_link_clicks: { Args: { link_id: string }; Returns: undefined }
+      is_active_user: { Args: never; Returns: boolean }
+      is_global_admin: { Args: never; Returns: boolean }
+      resolve_link_and_log_click:
+        | {
+            Args: {
+              p_browser: string
+              p_code: string
+              p_device_type: string
+              p_ip: string
+              p_os: string
+              p_password?: string
+              p_referrer: string
+              p_user_agent: string
+            }
+            Returns: {
+              click_event_id: string
+              destination_url: string
+              requires_password: boolean
+            }[]
+          }
+        | {
+            Args: {
+              p_browser: string
+              p_city?: string
+              p_code: string
+              p_country?: string
+              p_country_code?: string
+              p_device_type: string
+              p_ip: string
+              p_os: string
+              p_password?: string
+              p_referrer: string
+              p_user_agent: string
+            }
+            Returns: {
+              click_event_id: string
+              destination_url: string
+              requires_password: boolean
+            }[]
+          }
     }
     Enums: {
       [_ in never]: never

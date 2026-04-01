@@ -57,14 +57,16 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .order("clicked_at", { ascending: false })
     .limit(200);
 
-  // Country distribution
+  // Country distribution - only real unique clicks with known countries
   const countryCounts: Record<string, { value: number; code: string }> = {};
   for (const c of recentClicks || []) {
-    if (!c.country || c.is_bot || c.is_filtered) continue;
-    if (!countryCounts[c.country]) {
-      countryCounts[c.country] = { value: 0, code: c.country_code || "Unknown" };
+    if (!c.country || c.is_bot || c.is_filtered || !c.is_unique) continue;
+    const code = (c.country_code || "XX").toUpperCase();
+    const key = code !== "XX" ? code : c.country;
+    if (!countryCounts[key]) {
+      countryCounts[key] = { value: 0, code };
     }
-    countryCounts[c.country].value += 1;
+    countryCounts[key].value += 1;
   }
   const countryData = Object.entries(countryCounts)
     .sort((a, b) => b[1].value - a[1].value)
