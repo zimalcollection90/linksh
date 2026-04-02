@@ -359,7 +359,9 @@ export default function MemberAnalyticsClient({
               <p className="text-sm text-muted-foreground text-center py-8">No clicks recorded yet</p>
             ) : (
               <div className="space-y-2">
-                {countryData.map((item) => (
+                {countryData
+                  .filter(item => item.name && item.name.toLowerCase() !== "unknown")
+                  .map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
                     <span className="text-lg leading-none">{getFlagEmoji(item.code)}</span>
                     <span className="text-sm w-20 text-muted-foreground truncate">{item.name}</span>

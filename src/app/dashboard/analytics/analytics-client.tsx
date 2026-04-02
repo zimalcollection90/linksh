@@ -42,12 +42,18 @@ function processClicksByDay(clicks: any[]) {
 function processCountryData(clicks: any[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks
-    .filter((c) => !c.is_bot && !c.is_filtered && c.is_unique && c.country)
+    .filter((c) => {
+      if (c.is_bot || c.is_filtered || !c.is_unique) return false;
+      if (!c.country) return false;
+      if (c.country.toLowerCase() === "unknown") return false;
+      return true;
+    })
     .forEach((c) => {
       const name = c.country;
-      const code = (c.country_code || "XX").toUpperCase();
-      const key = code !== "XX" ? code : name;
-      if (!counts[key]) counts[key] = { value: 0, code, name };
+      const code = (c.country_code || "").toUpperCase();
+      const validCode = code.length === 2 && code !== "XX" && code !== "UN" ? code : "";
+      const key = validCode || name;
+      if (!counts[key]) counts[key] = { value: 0, code: validCode, name };
       counts[key].value++;
     });
   return Object.values(counts)
@@ -61,7 +67,7 @@ function processHeatmapData(clicks: any[]) {
     .filter((c) => !c.is_bot && !c.is_filtered)
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
-      if (code && code !== "XX" && code.length === 2) {
+      if (code && code !== "XX" && code !== "UN" && code.length === 2) {
         counts[code] = (counts[code] || 0) + 1;
       }
     });
@@ -118,8 +124,12 @@ export default function AnalyticsClient({
   const byBrowser = processGrouped(clicks, "browser");
   const byOs = processGrouped(clicks, "os");
 
+  const realClicks = clicks.filter((c) => !c.is_bot && !c.is_filtered && c.is_unique);
   const totalClicks = links.reduce((s, l) => s + (l.click_count || 0), 0);
   const activeLinks = links.filter((l) => l.status === "active").length;
+  const knownCountries = new Set(
+    realClicks.map(c => c.country).filter(c => c && c.toLowerCase() !== "unknown")
+  ).size;
 
   const topLinks = [...links]
     .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
@@ -161,9 +171,9 @@ export default function AnalyticsClient({
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
           { label: "Total Clicks", value: totalClicks.toLocaleString(), color: "text-primary" },
-          { label: "Active Links", value: activeLinks, color: "text-cyan-400" },
-          { label: "Countries", value: new Set(clicks.map(c => c.country).filter(Boolean)).size, color: "text-green-400" },
-          { label: "Unique Devices", value: new Set(clicks.map(c => c.device_type).filter(Boolean)).size, color: "text-amber-400" },
+          { label: "Real Clicks", value: realClicks.length.toLocaleString(), color: "text-emerald-400" },
+          { label: "Countries", value: knownCountries, color: "text-cyan-400" },
+          { label: "Active Links", value: activeLinks, color: "text-amber-400" },
         ].map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="rounded-xl border border-border bg-card p-4">

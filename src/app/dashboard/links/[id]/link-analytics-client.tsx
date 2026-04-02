@@ -82,13 +82,21 @@ function processGrouped(clicks: ClickEvent[], field: keyof ClickEvent) {
 
 function processCountryData(clicks: ClickEvent[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
-  clicks.forEach((c) => {
-    const name = c.country || "Unknown";
-    const code = (c.country_code || "XX").toUpperCase();
-    const key = code !== "XX" ? code : name;
-    if (!counts[key]) counts[key] = { value: 0, code, name };
-    counts[key].value++;
-  });
+  clicks
+    .filter((c) => {
+      if (!c.country) return false;
+      if (c.country.toLowerCase() === "unknown") return false;
+      if (c.is_bot || c.is_filtered || !c.is_unique) return false;
+      return true;
+    })
+    .forEach((c) => {
+      const name = c.country!;
+      const code = (c.country_code || "").toUpperCase();
+      const validCode = code.length === 2 && code !== "XX" ? code : "";
+      const key = validCode || name;
+      if (!counts[key]) counts[key] = { value: 0, code: validCode, name };
+      counts[key].value++;
+    });
   return Object.values(counts)
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
@@ -96,12 +104,14 @@ function processCountryData(clicks: ClickEvent[]) {
 
 function processHeatmapData(clicks: ClickEvent[]) {
   const counts: Record<string, number> = {};
-  clicks.forEach((c) => {
-    const code = (c.country_code || "").toUpperCase();
-    if (code && code !== "XX" && code.length === 2) {
-      counts[code] = (counts[code] || 0) + 1;
-    }
-  });
+  clicks
+    .filter((c) => !c.is_bot && !c.is_filtered)
+    .forEach((c) => {
+      const code = (c.country_code || "").toUpperCase();
+      if (code && code !== "XX" && code !== "UN" && code.length === 2) {
+        counts[code] = (counts[code] || 0) + 1;
+      }
+    });
   return Object.entries(counts).map(([code, value]) => ({ code, value }));
 }
 

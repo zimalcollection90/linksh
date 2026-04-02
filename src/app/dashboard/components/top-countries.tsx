@@ -29,8 +29,12 @@ function getFlagEmoji(countryCode: string) {
 }
 
 export default function TopCountries({ data, title = "Top Countries" }: TopCountriesProps) {
-  const total = data.reduce((s, c) => s + c.click_count, 0) || 1;
-  const top = data.slice(0, 8);
+  // Filter out unknown/invalid entries at display time as final safety net
+  const cleanData = data.filter(
+    (d) => d.country && d.country.toLowerCase() !== "unknown" && d.country.toLowerCase() !== "xx"
+  );
+  const total = cleanData.reduce((s, c) => s + c.click_count, 0) || 1;
+  const top = cleanData.slice(0, 8);
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -95,9 +99,9 @@ export default function TopCountries({ data, title = "Top Countries" }: TopCount
             );
           })}
 
-          {data.length > 8 && (
+          {cleanData.length > 8 && (
             <p className="text-xs text-muted-foreground text-center pt-1">
-              +{data.length - 8} more countries
+              +{cleanData.length - 8} more countries
             </p>
           )}
         </div>
@@ -107,7 +111,7 @@ export default function TopCountries({ data, title = "Top Countries" }: TopCount
         <div className="mt-4 pt-3 border-t border-border/50 flex items-center gap-1.5">
           <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
           <span className="text-xs text-muted-foreground">
-            {total.toLocaleString()} total real clicks from {data.length} countr{data.length === 1 ? "y" : "ies"}
+            {total.toLocaleString()} total real clicks from {cleanData.length} countr{cleanData.length === 1 ? "y" : "ies"}
           </span>
         </div>
       )}

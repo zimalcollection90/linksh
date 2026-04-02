@@ -107,9 +107,14 @@ async function enrichClickGeoAsync(clickEventId: string, ip: string) {
     const geo = await resolveGeoIP(ip);
     if (!geo.countryCode && !geo.country) return;
     const adminClient = createAdminClient();
+    // Sanitize: store null instead of empty/Unknown strings
+    const country = geo.country && geo.country.toLowerCase() !== "unknown" ? geo.country : null;
+    const countryCode = geo.countryCode && geo.countryCode.toUpperCase() !== "XX" && geo.countryCode.toLowerCase() !== "unknown" ? geo.countryCode.toUpperCase() : null;
+    const city = geo.city && geo.city.toLowerCase() !== "unknown" ? geo.city : null;
+    if (!country && !countryCode) return;
     await adminClient
       .from("click_events")
-      .update({ country: geo.country, country_code: geo.countryCode, city: geo.city })
+      .update({ country, country_code: countryCode, city })
       .eq("id", clickEventId)
       .is("country", null);
   } catch (err: any) {
@@ -214,6 +219,11 @@ async function logClickFallbackAsync(args: {
     return;
   }
 
+  // Sanitize geo inputs — store null instead of "Unknown"
+  const safeCountry = args.country && args.country.toLowerCase() !== "unknown" ? args.country : null;
+  const safeCountryCode = args.countryCode && args.countryCode.toUpperCase() !== "XX" && args.countryCode.toLowerCase() !== "unknown" ? args.countryCode.toUpperCase() : null;
+  const safeCity = args.city && args.city.toLowerCase() !== "unknown" ? args.city : null;
+
   const isBot = /(bot|crawler|spider|crawl|scraper|facebookexternalhit|pingdom|headless)/i.test(
     args.userAgent || "",
   );
@@ -253,9 +263,9 @@ async function logClickFallbackAsync(args: {
       link_id: args.linkId,
       user_id: args.userId,
       ip_address: args.ip,
-      country: args.country,
-      country_code: args.countryCode,
-      city: args.city,
+      country: safeCountry,
+      country_code: safeCountryCode,
+      city: safeCity,
       device_type: args.deviceType,
       browser: args.browser,
       os: args.os,
@@ -304,9 +314,12 @@ export async function GET(
   const vercelCity = request.headers.get("x-vercel-ip-city");
   const cfCity = request.headers.get("cf-ipcity");
 
-  const edgeCountryCode = (cfCountry || vercelCountry || "").toUpperCase() || null;
+  const rawEdgeCode = (cfCountry || vercelCountry || "").toUpperCase().trim();
+  // Exclude invalid/test codes
+  const edgeCountryCode = rawEdgeCode && rawEdgeCode.length === 2 && rawEdgeCode !== "XX" && rawEdgeCode !== "T1" ? rawEdgeCode : null;
   const edgeCountry = edgeCountryCode ? (CC_TO_COUNTRY[edgeCountryCode] || null) : null;
-  const edgeCity = vercelCity ? decodeURIComponent(vercelCity) : cfCity || null;
+  const rawEdgeCity = vercelCity ? decodeURIComponent(vercelCity).trim() : (cfCity || "").trim() || null;
+  const edgeCity = rawEdgeCity && rawEdgeCity.toLowerCase() !== "unknown" ? rawEdgeCity : null;
 
   // Use edge headers if available (instant), otherwise skip geo for now (async later)
   const hasEdgeGeo = Boolean(edgeCountryCode && edgeCountry);

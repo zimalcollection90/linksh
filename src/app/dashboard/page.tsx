@@ -122,17 +122,21 @@ export default async function Dashboard() {
         .eq("is_filtered", false)
         .eq("is_unique", true)
         .not("country", "is", null)
+        .neq("country", "Unknown")
         .limit(5000);
 
       const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
       for (const row of memberCountryClicks || []) {
-        const name = row.country || "Unknown";
-        const code = (row.country_code || "XX").toUpperCase();
-        const key = code;
-        if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: code, click_count: 0 };
+        const name = row.country;
+        const code = (row.country_code || "").toUpperCase();
+        if (!name || name.toLowerCase() === "unknown") continue;
+        const validCode = code.length === 2 && code !== "XX" ? code : "";
+        const key = validCode || name;
+        if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: validCode, click_count: 0 };
         countryCounts[key].click_count++;
       }
       topCountries = Object.values(countryCounts)
+        .filter(c => c.country && c.country.toLowerCase() !== "unknown")
         .sort((a, b) => b.click_count - a.click_count)
         .slice(0, 10);
     }
@@ -175,8 +179,8 @@ export default async function Dashboard() {
 
     const counts: Record<string, number> = {};
     for (const row of heatmapClicks || []) {
-      const code = row?.country_code?.toString().toUpperCase();
-      if (!code || code === "XX" || code.length !== 2) continue;
+      const code = row?.country_code?.toString().toUpperCase().trim();
+      if (!code || code === "XX" || code === "UN" || code.toLowerCase() === "unknown" || code.length !== 2) continue;
       counts[code] = (counts[code] || 0) + 1;
     }
     heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
@@ -252,17 +256,22 @@ export default async function Dashboard() {
       .eq("is_filtered", false)
       .eq("is_unique", true)
       .not("country", "is", null)
-      .limit(10000);
+      .neq("country", "Unknown")
+      .limit(20000);
 
     const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
     for (const row of countryClicks || []) {
-      const name = row.country || "Unknown";
-      const code = (row.country_code || "XX").toUpperCase();
-      const key = code;
-      if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: code, click_count: 0 };
+      const name = row.country;
+      const code = (row.country_code || "").toUpperCase();
+      // Skip unknown / invalid entries
+      if (!name || name.toLowerCase() === "unknown") continue;
+      const validCode = code.length === 2 && code !== "XX" ? code : "";
+      const key = validCode || name;
+      if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: validCode, click_count: 0 };
       countryCounts[key].click_count++;
     }
     topCountries = Object.values(countryCounts)
+      .filter(c => c.country && c.country.toLowerCase() !== "unknown")
       .sort((a, b) => b.click_count - a.click_count)
       .slice(0, 15);
 

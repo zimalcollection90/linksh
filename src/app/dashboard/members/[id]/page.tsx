@@ -55,16 +55,18 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .eq("user_id", memberId)
     .gte("clicked_at", thirtyDaysAgo.toISOString())
     .order("clicked_at", { ascending: false })
-    .limit(200);
+    .limit(1000);
 
   // Country distribution - only real unique clicks with known countries
   const countryCounts: Record<string, { value: number; code: string }> = {};
   for (const c of recentClicks || []) {
     if (!c.country || c.is_bot || c.is_filtered || !c.is_unique) continue;
-    const code = (c.country_code || "XX").toUpperCase();
-    const key = code !== "XX" ? code : c.country;
+    if (c.country.toLowerCase() === "unknown") continue;
+    const code = (c.country_code || "").toUpperCase();
+    const validCode = code.length === 2 && code !== "XX" ? code : "";
+    const key = validCode || c.country;
     if (!countryCounts[key]) {
-      countryCounts[key] = { value: 0, code };
+      countryCounts[key] = { value: 0, code: validCode };
     }
     countryCounts[key].value += 1;
   }
