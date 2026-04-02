@@ -10,6 +10,7 @@ import { BarChart2, Globe, Monitor, Smartphone, Link2 } from "lucide-react";
 import { format, subDays } from "date-fns";
 import Link from "next/link";
 import WorldHeatmap from "../components/world-heatmap";
+import { getCountryName } from "../../../utils/geo";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#818CF8"];
 
@@ -49,8 +50,11 @@ function processCountryData(clicks: any[]) {
       return true;
     })
     .forEach((c) => {
-      const name = c.country;
       const code = (c.country_code || "").toUpperCase();
+      const name = c.country && c.country.toLowerCase() !== "unknown" 
+        ? c.country 
+        : getCountryName(code);
+      
       const validCode = code.length === 2 && code !== "XX" && code !== "UN" ? code : "";
       const key = validCode || name;
       if (!counts[key]) counts[key] = { value: 0, code: validCode, name };
