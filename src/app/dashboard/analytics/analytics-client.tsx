@@ -53,12 +53,15 @@ function processCountryData(clicks: any[]) {
     })
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
-      const name = c.country && !["unknown", "other", ""].includes(c.country.toLowerCase()) 
+      const rawName = c.country && !["unknown", "other", ""].includes(c.country.toLowerCase()) 
         ? c.country 
         : getCountryName(code);
       
+      const name = rawName || "Unknown Location";
       const validCode = code.length === 2 && code !== "XX" && code !== "UN" ? code : "";
-      const key = validCode || name;
+      
+      // Group by name to ensure "Unknown Location" stays together regardless of code
+      const key = name;
       if (!counts[key]) counts[key] = { value: 0, code: validCode, name };
       counts[key].value++;
     });
@@ -135,7 +138,7 @@ export default function AnalyticsClient({
       const res = await fetch("/api/admin/repair-geo", { method: "POST" });
       const data = await res.json();
       if (res.ok) {
-        toast.success(data.message || "Repair completed!");
+        toast.success(`Repaired ${data.repaired || 0} records out of ${data.totalChecked || 0} checked.`);
         setTimeout(() => window.location.reload(), 2000);
       } else {
         toast.error(data.error || "Repair failed.");

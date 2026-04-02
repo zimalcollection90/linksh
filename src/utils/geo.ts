@@ -35,9 +35,10 @@ export const CC_TO_COUNTRY: Record<string, string> = {
 };
 
 export function getCountryName(countryCode?: string | null): string {
-  if (!countryCode) return "Other";
+  if (!countryCode) return "Unknown Location";
   const code = countryCode.toUpperCase();
   // Map common internal/test codes
   if (code === "LH" || code === "LOCAL") return "Localhost / Internal";
-  return CC_TO_COUNTRY[code] || "Other";
+  if (code === "XX" || code === "UN" || code === "???") return "Unknown Location";
+  return CC_TO_COUNTRY[code] || "Other Location";
 }

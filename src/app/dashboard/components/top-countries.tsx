@@ -30,9 +30,13 @@ function getFlagEmoji(countryCode: string) {
 
 export default function TopCountries({ data, title = "Top Countries" }: TopCountriesProps) {
   // Filter out unknown/invalid entries at display time as final safety net
-  const cleanData = data.filter(
-    (d) => d.country && d.country_code !== "XX"
-  );
+  // Include all data, use fallback labels for unknown origins
+  const cleanData = data.map(d => ({
+    ...d,
+    country: d.country && !["unknown", "other", ""].includes(d.country.toLowerCase()) 
+      ? d.country 
+      : (d.country_code && d.country_code !== "XX" ? d.country_code : "Unknown Location")
+  }));
   const total = cleanData.reduce((s, c) => s + c.click_count, 0) || 1;
   const top = cleanData.slice(0, 8);
 
