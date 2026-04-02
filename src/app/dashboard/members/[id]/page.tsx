@@ -1,6 +1,7 @@
 import { createClient } from "../../../../../supabase/server";
 import { redirect, notFound } from "next/navigation";
 import MemberAnalyticsClient from "./member-analytics-client";
+import { getCountryName } from "../../../../utils/geo";
 
 export default async function MemberAnalyticsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id: memberId } = await params;
@@ -57,14 +58,20 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
     .order("clicked_at", { ascending: false })
     .limit(1000);
 
-  // Country distribution - only real unique clicks with known countries
+  // Country distribution - use code fallback if name is missing
   const countryCounts: Record<string, { value: number; code: string }> = {};
   for (const c of recentClicks || []) {
-    if (!c.country || c.is_bot || c.is_filtered || !c.is_unique) continue;
-    if (c.country.toLowerCase() === "unknown") continue;
+    if (c.is_bot === true) continue;
+    
     const code = (c.country_code || "").toUpperCase();
+    const name = c.country && c.country.toLowerCase() !== "unknown" 
+      ? c.country 
+      : getCountryName(code);
+    
+    if (name === "Unknown" && (!code || code === "XX")) continue;
+    
     const validCode = code.length === 2 && code !== "XX" ? code : "";
-    const key = validCode || c.country;
+    const key = name; // Use name as the key for display
     if (!countryCounts[key]) {
       countryCounts[key] = { value: 0, code: validCode };
     }
@@ -78,7 +85,7 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
   // Device distribution
   const deviceCounts: Record<string, number> = {};
   for (const c of recentClicks || []) {
-    if (!c.device_type || c.is_bot || c.is_filtered) continue;
+    if (!c.device_type || c.is_bot === true || c.is_filtered === true) continue;
     deviceCounts[c.device_type] = (deviceCounts[c.device_type] || 0) + 1;
   }
   const deviceData = Object.entries(deviceCounts)
@@ -88,7 +95,7 @@ export default async function MemberAnalyticsPage({ params }: { params: Promise<
   // Browser distribution
   const browserCounts: Record<string, number> = {};
   for (const c of recentClicks || []) {
-    if (!c.browser || c.is_bot || c.is_filtered) continue;
+    if (!c.browser || c.is_bot === true || c.is_filtered === true) continue;
     browserCounts[c.browser] = (browserCounts[c.browser] || 0) + 1;
   }
   const browserData = Object.entries(browserCounts)

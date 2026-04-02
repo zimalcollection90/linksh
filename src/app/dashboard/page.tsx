@@ -3,6 +3,7 @@ import AdminDashboard from "./components/admin-dashboard";
 import MemberDashboard from "./components/member-dashboard";
 import Link from "next/link";
 import { Clock, ShieldOff } from "lucide-react";
+import { getCountryName } from "@/utils/geo";
 
 export default async function Dashboard() {
   const supabase = await createClient();
@@ -91,10 +92,10 @@ export default async function Dashboard() {
     totalClicks = (clicksRes.data || []).reduce((s: number, l: any) => s + (l.click_count || 0), 0);
     activeMembers = membersRes.count || 0;
     for (const e of clickEventsRes.data || []) {
-      if (e.is_bot) botExcluded += 1;
-      if (e.is_filtered) filteredClicks += 1;
-      if (!e.is_bot && !e.is_filtered) realClicks += 1;
-      if (e.is_unique) uniqueUsers += 1;
+      if (e.is_bot === true) botExcluded += 1;
+      if (e.is_filtered === true) filteredClicks += 1;
+      if (e.is_bot !== true && e.is_filtered !== true) realClicks += 1;
+      if (e.is_unique !== false) uniqueUsers += 1;
     }
   } else {
     const [linksRes, myLinksRes, realClicksRes] = await Promise.all([
@@ -118,25 +119,27 @@ export default async function Dashboard() {
         .from("click_events")
         .select("country, country_code")
         .eq("user_id", userId)
-        .eq("is_bot", false)
-        .eq("is_filtered", false)
-        .eq("is_unique", true)
+        .neq("is_bot", true)
+        .neq("is_filtered", true)
         .not("country", "is", null)
         .neq("country", "Unknown")
         .limit(5000);
 
       const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
       for (const row of memberCountryClicks || []) {
-        const name = row.country;
         const code = (row.country_code || "").toUpperCase();
-        if (!name || name.toLowerCase() === "unknown") continue;
-        const validCode = code.length === 2 && code !== "XX" ? code : "";
+        const name = row.country && !["unknown", "other", ""].includes(row.country.toLowerCase()) 
+          ? row.country 
+          : getCountryName(code);
+        
+        const validCode = code.length === 2 && !["XX", "UN"].includes(code) ? code : "";
         const key = validCode || name;
+        if (key === "Other" && !validCode) continue; // Focus on real identified countries
+        
         if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: validCode, click_count: 0 };
         countryCounts[key].click_count++;
       }
       topCountries = Object.values(countryCounts)
-        .filter(c => c.country && c.country.toLowerCase() !== "unknown")
         .sort((a, b) => b.click_count - a.click_count)
         .slice(0, 10);
     }
@@ -172,15 +175,15 @@ export default async function Dashboard() {
       .from("click_events")
       .select("country_code")
       .not("country_code", "is", null)
-      .eq("is_bot", false)
-      .eq("is_filtered", false)
+      .neq("is_bot", true)
+      .neq("is_filtered", true)
       .order("clicked_at", { ascending: false })
       .limit(5000);
 
     const counts: Record<string, number> = {};
     for (const row of heatmapClicks || []) {
       const code = row?.country_code?.toString().toUpperCase().trim();
-      if (!code || code === "XX" || code === "UN" || code.toLowerCase() === "unknown" || code.length !== 2) continue;
+      if (!code || ["XX", "UN", "UNKNOWN", "OTHER"].includes(code) || code.length !== 2) continue;
       counts[code] = (counts[code] || 0) + 1;
     }
     heatmapData = Object.entries(counts).map(([code, value]) => ({ code, value }));
@@ -194,8 +197,8 @@ export default async function Dashboard() {
   let trendQuery = supabase
     .from("click_events")
     .select("clicked_at")
-    .eq("is_bot", false)
-    .eq("is_filtered", false)
+    .neq("is_bot", true)
+    .neq("is_filtered", true)
     .gte("clicked_at", start.toISOString())
     .order("clicked_at", { ascending: true })
     .limit(5000);
@@ -252,26 +255,27 @@ export default async function Dashboard() {
     const { data: countryClicks } = await supabase
       .from("click_events")
       .select("country, country_code")
-      .eq("is_bot", false)
-      .eq("is_filtered", false)
-      .eq("is_unique", true)
+      .neq("is_bot", true)
+      .neq("is_filtered", true)
       .not("country", "is", null)
       .neq("country", "Unknown")
       .limit(20000);
 
     const countryCounts: Record<string, { country: string; country_code: string; click_count: number }> = {};
     for (const row of countryClicks || []) {
-      const name = row.country;
       const code = (row.country_code || "").toUpperCase();
-      // Skip unknown / invalid entries
-      if (!name || name.toLowerCase() === "unknown") continue;
-      const validCode = code.length === 2 && code !== "XX" ? code : "";
+      const name = row.country && !["unknown", "other", ""].includes(row.country.toLowerCase()) 
+        ? row.country 
+        : getCountryName(code);
+
+      const validCode = code.length === 2 && !["XX", "UN"].includes(code) ? code : "";
       const key = validCode || name;
+      if (key === "Other" && !validCode) continue; // Focus on identified locations
+
       if (!countryCounts[key]) countryCounts[key] = { country: name, country_code: validCode, click_count: 0 };
       countryCounts[key].click_count++;
     }
     topCountries = Object.values(countryCounts)
-      .filter(c => c.country && c.country.toLowerCase() !== "unknown")
       .sort((a, b) => b.click_count - a.click_count)
       .slice(0, 15);
 
@@ -290,7 +294,7 @@ export default async function Dashboard() {
     for (const c of memberClicks || []) {
       if (!c.user_id) continue;
       const bucket = clickStatsByUser[c.user_id] || { real_clicks: 0 };
-      if (!c.is_bot && !c.is_filtered) bucket.real_clicks += 1;
+      if (c.is_bot !== true && c.is_filtered !== true) bucket.real_clicks += 1;
       clickStatsByUser[c.user_id] = bucket;
     }
 
@@ -304,6 +308,7 @@ export default async function Dashboard() {
           const clicks = (links || []).reduce((s: number, l: any) => s + (l.click_count || 0), 0);
           return {
             ...m,
+            displayName: m.display_name || m.full_name || m.email?.split("@")[0] || "Member",
             role: m.role || "member",
             status: m.status || "pending",
             totalClicks: clicks,

@@ -31,7 +31,7 @@ function getFlagEmoji(countryCode: string) {
 export default function TopCountries({ data, title = "Top Countries" }: TopCountriesProps) {
   // Filter out unknown/invalid entries at display time as final safety net
   const cleanData = data.filter(
-    (d) => d.country && d.country.toLowerCase() !== "unknown" && d.country.toLowerCase() !== "xx"
+    (d) => d.country && d.country_code !== "XX"
   );
   const total = cleanData.reduce((s, c) => s + c.click_count, 0) || 1;
   const top = cleanData.slice(0, 8);
@@ -68,7 +68,7 @@ export default function TopCountries({ data, title = "Top Countries" }: TopCount
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-medium truncate pr-2">
-                      {item.country === "Unknown" ? "Unknown Location" : item.country}
+                      {["unknown", "other"].includes(item.country.toLowerCase()) ? "Other Location" : item.country}
                     </span>
                     <div className="flex items-center gap-1 flex-shrink-0">
                       <span className="text-xs font-bold text-foreground">

@@ -20,7 +20,7 @@ import WorldHeatmap from "../../components/world-heatmap";
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#F59E0B"];
 
 function getFlagEmoji(countryCode?: string) {
-  if (!countryCode || countryCode === "Unknown" || countryCode === "XX" || countryCode.length !== 2) return "🌐";
+  if (!countryCode || ["unknown", "other", "xx"].includes(countryCode.toLowerCase()) || countryCode.length !== 2) return "🌐";
   try {
     const codePoints = countryCode
       .toUpperCase()
@@ -61,12 +61,19 @@ export default function MemberAnalyticsClient({
   earnings,
   totalEarnings,
 }: MemberAnalyticsClientProps) {
+  const [hasMounted, setHasMounted] = useState(false);
+  React.useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
   const [activeTab, setActiveTab] = useState<"overview" | "links" | "geo" | "activity">("overview");
 
-  const name = member.display_name || member.full_name || member.email?.split("@")[0] || "Unknown";
+  const name = member.display_name || member.full_name || member.email?.split("@")[0] || "Member";
   const initials = name.slice(0, 2).toUpperCase();
   const status = member.membership_status || member.status || "pending";
   const role = member.role || "member";
+
+  if (!hasMounted) return null;
 
   const statusColors: Record<string, string> = {
     active: "bg-green-500/10 text-green-400 border-green-500/20",
@@ -80,7 +87,7 @@ export default function MemberAnalyticsClient({
 
   // Format daily clicks for chart
   const chartData = dailyClicks.map(d => ({
-    date: d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "MMM d") : (d.day || "Unknown"),
+    date: d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "MMM d") : (d.day || "Other"),
     Total: d.total,
     Real: d.real,
     Unique: d.unique,
@@ -159,7 +166,7 @@ export default function MemberAnalyticsClient({
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-green-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
               <span className="text-sm font-medium">Traffic Quality Score</span>
             </div>
             <span className={cn("text-xl font-bold", qualityScore >= 70 ? "text-green-400" : qualityScore >= 40 ? "text-amber-400" : "text-red-400")}>
@@ -360,7 +367,7 @@ export default function MemberAnalyticsClient({
             ) : (
               <div className="space-y-2">
                 {countryData
-                  .filter(item => item.name && item.name.toLowerCase() !== "unknown")
+                  .filter(item => item.name && !["unknown", "other"].includes(item.name.toLowerCase()))
                   .map((item) => (
                   <div key={item.name} className="flex items-center gap-2">
                     <span className="text-lg leading-none">{getFlagEmoji(item.code)}</span>
@@ -400,7 +407,7 @@ export default function MemberAnalyticsClient({
                   {deviceData.map((item, i) => (
                     <div key={item.name} className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
-                      <span className="text-xs text-muted-foreground capitalize">{item.name || "Unknown"}</span>
+                      <span className="text-xs text-muted-foreground capitalize">{item.name || "Other"}</span>
                       <span className="text-xs font-medium">{item.value}</span>
                     </div>
                   ))}
@@ -476,7 +483,7 @@ export default function MemberAnalyticsClient({
                     [...dailyClicks].reverse().slice(0, 14).map((d) => (
                       <tr key={d.day} className="border-b border-border/50 last:border-0">
                         <td className="py-2 text-xs text-muted-foreground">
-                          {d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "EEE, MMM d") : (d.day || "Unknown")}
+                          {d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "EEE, MMM d") : (d.day || "Other")}
                         </td>
                         <td className="py-2 text-right text-xs">{d.total}</td>
                         <td className="py-2 text-right text-xs text-green-400">{d.real}</td>

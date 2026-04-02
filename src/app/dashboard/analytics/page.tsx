@@ -41,8 +41,6 @@ export default async function AnalyticsPage() {
     ? supabase
         .from("click_events")
         .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_bot, is_filtered, is_unique")
-        .eq("is_bot", false)
-        .eq("is_filtered", false)
         .order("clicked_at", { ascending: false })
         .limit(5000)
     : linkIds.length > 0
@@ -50,8 +48,6 @@ export default async function AnalyticsPage() {
         .from("click_events")
         .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_bot, is_filtered, is_unique")
         .in("link_id", linkIds)
-        .eq("is_bot", false)
-        .eq("is_filtered", false)
         .order("clicked_at", { ascending: false })
         .limit(2000)
     : null;

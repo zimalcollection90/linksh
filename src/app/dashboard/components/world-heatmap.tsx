@@ -27,7 +27,7 @@ export default function WorldHeatmap({ data }: { data: HeatmapPoint[] }) {
   }, [dataMap]);
 
   const geoUrl =
-    "https://raw.githubusercontent.com/deldersveld/topojson/master/world-countries.json";
+    "https://raw.githubusercontent.com/lotusms/world-map-data/main/world.json";
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -39,12 +39,13 @@ export default function WorldHeatmap({ data }: { data: HeatmapPoint[] }) {
         </span>
       </div>
 
-      <div style={{ width: "100%", height: 260 }}>
-        <ComposableMap projection="geoMercator">
+      <div style={{ width: "100%", height: 200, overflow: "hidden" }} className="relative">
+        <ComposableMap projection="geoMercator" projectionConfig={{ scale: 120 }} width={800} height={400} style={{ width: "100%", height: "100%" }}>
           <Geographies geography={geoUrl}>
             {(props: any) =>
               (props.geographies || []).map((geo: any) => {
                 const code = (geo.properties?.ISO_A2 ||
+                  geo.properties?.["Alpha-2"] ||
                   geo.id ||
                   geo.properties?.code ||
                   "").toString().toUpperCase();

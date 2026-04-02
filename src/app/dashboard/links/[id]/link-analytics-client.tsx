@@ -13,11 +13,12 @@ import { toast } from "sonner";
 import { format, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import WorldHeatmap from "../../components/world-heatmap";
+import { getCountryName } from "../../../../utils/geo";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8"];
 
 function getFlagEmoji(countryCode: string) {
-  if (!countryCode || countryCode === "Unknown" || countryCode === "XX" || countryCode.length !== 2) return "🌐";
+  if (!countryCode || ["unknown", "other", "xx"].includes(countryCode.toLowerCase()) || countryCode.length !== 2) return "🌐";
   try {
     const codePoints = countryCode
       .toUpperCase()
@@ -71,7 +72,7 @@ function processClicksByDay(clicks: ClickEvent[]) {
 function processGrouped(clicks: ClickEvent[], field: keyof ClickEvent) {
   const counts: Record<string, number> = {};
   clicks.forEach((c) => {
-    const val = (c[field] as string) || "Unknown";
+    const val = (c[field] as string) || "Other";
     counts[val] = (counts[val] || 0) + 1;
   });
   return Object.entries(counts)
@@ -84,14 +85,16 @@ function processCountryData(clicks: ClickEvent[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks
     .filter((c) => {
-      if (!c.country) return false;
-      if (c.country.toLowerCase() === "unknown") return false;
-      if (c.is_bot || c.is_filtered || !c.is_unique) return false;
+      // PERMISSIVE: Only exclude confirmed bots/filtered
+      if (c.is_bot === true || c.is_filtered === true) return false;
       return true;
     })
     .forEach((c) => {
-      const name = c.country!;
       const code = (c.country_code || "").toUpperCase();
+      const name = c.country && !["unknown", "other", ""].includes(c.country.toLowerCase()) 
+        ? c.country 
+        : getCountryName(code);
+      
       const validCode = code.length === 2 && code !== "XX" ? code : "";
       const key = validCode || name;
       if (!counts[key]) counts[key] = { value: 0, code: validCode, name };
@@ -105,7 +108,7 @@ function processCountryData(clicks: ClickEvent[]) {
 function processHeatmapData(clicks: ClickEvent[]) {
   const counts: Record<string, number> = {};
   clicks
-    .filter((c) => !c.is_bot && !c.is_filtered)
+    .filter((c) => c.is_bot !== true && c.is_filtered !== true)
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
       if (code && code !== "XX" && code !== "UN" && code.length === 2) {
@@ -116,6 +119,11 @@ function processHeatmapData(clicks: ClickEvent[]) {
 }
 
 export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClientProps) {
+  const [hasMounted, setHasMounted] = React.useState(false);
+  React.useEffect(() => {
+    setHasMounted(true);
+  }, []);
+  
   const [copied, setCopied] = React.useState(false);
   const [view, setView] = React.useState<"all" | "real">("real");
   const [origin, setOrigin] = React.useState("");
@@ -123,6 +131,8 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
   React.useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  if (!hasMounted) return null;
 
   const shortUrl = origin ? `${origin}/${link.short_code}` : `/${link.short_code}`;
 
@@ -152,10 +162,10 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
 
   const isFraudFlagged = link.is_fraud_flagged || avgQuality < 50;
   // Unique countries as a proxy for unique users (ip_address not in select query)
-  const uniqueVisitors = new Set(realClicks.map(c => c.country).filter(Boolean)).size;
+  const uniqueVisitors = new Set(realClicks.map(c => c.country).filter(c => c && !["unknown", "other"].includes(c.toLowerCase()))).size;
 
   const filterReasons = filteredClicks.reduce((acc: Record<string, number>, c) => {
-    const r = c.filter_reason || "unknown";
+    const r = c.filter_reason || "other";
     acc[r] = (acc[r] || 0) + 1;
     return acc;
   }, {});

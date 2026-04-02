@@ -53,7 +53,12 @@ function isValidShortCode(code: string) {
 async function resolveGeoIP(ip: string): Promise<{ country: string | null; countryCode: string | null; city: string | null }> {
   const result = { country: null as string | null, countryCode: null as string | null, city: null as string | null };
 
-  if (!ip || ip === "127.0.0.1" || ip === "::1" || ip.startsWith("10.") || ip.startsWith("192.168.") || ip.length < 7) {
+  const isLocal = !ip || ip.includes("127.0.0.1") || ip.includes("::1") || ip.includes("localhost") || ip === "::ffff:127.0.0.1";
+  if (isLocal) {
+    return { country: "Localhost / Internal", countryCode: "LH", city: "Testing" };
+  }
+
+  if (ip.startsWith("10.") || ip.startsWith("192.168.") || ip.length < 7) {
     return result;
   }
 
@@ -92,6 +97,39 @@ async function resolveGeoIP(ip: string): Promise<{ country: string | null; count
       }
     }
   } catch { /* fall through */ }
+  
+  // Third Fallback: freeipapi.com (reliable, 60 req/min free)
+  try {
+    const resp = await fetch(`https://freeipapi.com/api/json/${encodeURIComponent(ip)}`, {
+      signal: AbortSignal.timeout(1200),
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data && data.countryCode) {
+        const cc = (data.countryCode || "").toUpperCase();
+        result.countryCode = cc || null;
+        result.country = data.countryName || (cc ? CC_TO_COUNTRY[cc] : null) || null;
+        result.city = data.cityName || null;
+      }
+    }
+  } catch { /* fall through */ }
+
+  // 4th Fallback: ipwho.is (fast, 1k/month free)
+  try {
+    const resp = await fetch(`https://ipwho.is/${encodeURIComponent(ip)}`, {
+      signal: AbortSignal.timeout(1200),
+    });
+    if (resp.ok) {
+      const data = await resp.json().catch(() => null);
+      if (data && data.success) {
+        const cc = (data.country_code || "").toUpperCase();
+        result.countryCode = cc || null;
+        result.country = data.country || (cc ? CC_TO_COUNTRY[cc] : null) || null;
+        result.city = data.city || null;
+        if (result.country) return result;
+      }
+    }
+  } catch { /* fall through */ }
 
   return result;
 }
@@ -104,16 +142,16 @@ async function enrichClickGeoAsync(clickEventId: string, ip: string) {
     const geo = await resolveGeoIP(ip);
     if (!geo.countryCode && !geo.country) return;
     const adminClient = createAdminClient();
-    // Sanitize: store null instead of empty/Unknown strings
-    const country = geo.country && geo.country.toLowerCase() !== "unknown" ? geo.country : null;
-    const countryCode = geo.countryCode && geo.countryCode.toUpperCase() !== "XX" && geo.countryCode.toLowerCase() !== "unknown" ? geo.countryCode.toUpperCase() : null;
-    const city = geo.city && geo.city.toLowerCase() !== "unknown" ? geo.city : null;
+    // Sanitize: store null instead of empty/Unknown strings — UI will handle labeling
+    const country = geo.country && !["unknown", "other", ""].includes(geo.country.toLowerCase()) ? geo.country : null;
+    const countryCode = geo.countryCode && !["xx", "unknown", ""].includes(geo.countryCode.toLowerCase()) ? geo.countryCode.toUpperCase() : null;
+    const city = geo.city && !["unknown", ""].includes(geo.city.toLowerCase()) ? geo.city : null;
     if (!country && !countryCode) return;
     await adminClient
       .from("click_events")
       .update({ country, country_code: countryCode, city })
       .eq("id", clickEventId)
-      .is("country", null);
+      .or('country.is.null,country.eq.Unknown');
   } catch (err: any) {
     console.error("[redirect] geo enrich failed:", err?.message);
   }
@@ -221,9 +259,12 @@ async function logClickFallbackAsync(args: {
   const safeCountryCode = args.countryCode && args.countryCode.toUpperCase() !== "XX" && args.countryCode.toLowerCase() !== "unknown" ? args.countryCode.toUpperCase() : null;
   const safeCity = args.city && args.city.toLowerCase() !== "unknown" ? args.city : null;
 
-  const isBot = /(bot|crawler|spider|crawl|scraper|facebookexternalhit|pingdom|headless)/i.test(
+  const isBotRaw = /(bot|crawler|spider|crawl|scraper|facebookexternalhit|pingdom|headless)/i.test(
     args.userAgent || "",
   );
+  // Specifically allow Facebook hits (crawlers/link previews) to be counted as real clicks per user request
+  const isFacebook = /(facebookexternalhit|facebot|facebook)/i.test(args.userAgent || "");
+  const isBot = isBotRaw && !isFacebook;
 
   let isSelfClick = false;
   if (args.ip && args.userId) {

@@ -11,11 +11,13 @@ import { format, subDays } from "date-fns";
 import Link from "next/link";
 import WorldHeatmap from "../components/world-heatmap";
 import { getCountryName } from "../../../utils/geo";
+import { ComposableMap } from "react-simple-maps";
+import { toast } from "sonner";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#818CF8"];
 
 function getFlagEmoji(countryCode: string) {
-  if (!countryCode || countryCode === "Unknown" || countryCode === "XX" || countryCode.length !== 2) return "🌐";
+  if (!countryCode || ["unknown", "other", "xx"].includes(countryCode.toLowerCase()) || countryCode.length !== 2) return "🌐";
   try {
     const codePoints = countryCode
       .toUpperCase()
@@ -44,14 +46,14 @@ function processCountryData(clicks: any[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks
     .filter((c) => {
-      if (c.is_bot || c.is_filtered || !c.is_unique) return false;
-      if (!c.country) return false;
-      if (c.country.toLowerCase() === "unknown") return false;
+      // PERMISSIVE QUALITY FILTER: Include NULL values to show historical data, only exclude confirmed bots/duplicates
+      if (c.is_bot === true) return false;
+      if (c.is_filtered === true) return false;
       return true;
     })
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
-      const name = c.country && c.country.toLowerCase() !== "unknown" 
+      const name = c.country && !["unknown", "other", ""].includes(c.country.toLowerCase()) 
         ? c.country 
         : getCountryName(code);
       
@@ -68,7 +70,7 @@ function processCountryData(clicks: any[]) {
 function processHeatmapData(clicks: any[]) {
   const counts: Record<string, number> = {};
   clicks
-    .filter((c) => !c.is_bot && !c.is_filtered)
+    .filter((c) => c.is_bot !== true && c.is_filtered !== true)
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
       if (code && code !== "XX" && code !== "UN" && code.length === 2) {
@@ -81,7 +83,7 @@ function processHeatmapData(clicks: any[]) {
 function processGrouped(clicks: any[], field: string) {
   const counts: Record<string, number> = {};
   clicks.forEach((c) => {
-    const val = (c[field] as string) || "Unknown";
+    const val = (c[field] as string) || "Other";
     counts[val] = (counts[val] || 0) + 1;
   });
   return Object.entries(counts)
@@ -120,6 +122,31 @@ export default function AnalyticsClient({
   isAdmin: boolean;
   members?: any[];
 }) {
+  const [hasMounted, setHasMounted] = React.useState(false);
+  const [isRepairing, setIsRepairing] = React.useState(false);
+
+  React.useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  const handleRepair = async () => {
+    setIsRepairing(true);
+    try {
+      const res = await fetch("/api/admin/repair-geo", { method: "POST" });
+      const data = await res.json();
+      if (res.ok) {
+        toast.success(data.message || "Repair completed!");
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        toast.error(data.error || "Repair failed.");
+      }
+    } catch (e) {
+      toast.error("An error occurred during repair.");
+    } finally {
+      setIsRepairing(false);
+    }
+  };
+
   const clicksByDay = processClicksByDay(clicks);
   const clicksByMonth = processClicksByMonth(clicks);
   const byCountry = processCountryData(clicks);
@@ -128,12 +155,19 @@ export default function AnalyticsClient({
   const byBrowser = processGrouped(clicks, "browser");
   const byOs = processGrouped(clicks, "os");
 
-  const realClicks = clicks.filter((c) => !c.is_bot && !c.is_filtered && c.is_unique);
+  if (!hasMounted) return null;
+
+
+  const realClicks = clicks.filter((c) => c.is_bot !== true && c.is_filtered !== true);
   const totalClicks = links.reduce((s, l) => s + (l.click_count || 0), 0);
+  const countriesWithData = realClicks.map(c => {
+    const code = (c.country_code || "").toUpperCase();
+    return c.country && !["unknown", "other"].includes(c.country.toLowerCase()) 
+      ? c.country 
+      : getCountryName(code);
+  }).filter(Boolean);
+  const knownCountries = new Set(countriesWithData).size;
   const activeLinks = links.filter((l) => l.status === "active").length;
-  const knownCountries = new Set(
-    realClicks.map(c => c.country).filter(c => c && c.toLowerCase() !== "unknown")
-  ).size;
 
   const topLinks = [...links]
     .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
@@ -153,7 +187,7 @@ export default function AnalyticsClient({
         }).length;
         return {
           id: m.id,
-          name: m.display_name || m.full_name || m.email || "Unknown",
+          name: m.display_name || m.full_name || m.email || "Member",
           role: m.role || "member",
           status: m.status || "pending",
           links: ownLinks.length,
@@ -166,10 +200,21 @@ export default function AnalyticsClient({
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">
-      <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Analytics</h1>
-        <p className="text-sm text-muted-foreground mt-1">Detailed insights across all your links.</p>
-      </motion.div>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Analytics</h1>
+            <p className="text-sm text-muted-foreground mt-1">Detailed insights across all your links.</p>
+          </div>
+          {isAdmin && (
+            <button 
+              onClick={handleRepair}
+              disabled={isRepairing}
+              className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+            >
+              {isRepairing ? "Repairing..." : "Repair Pending Analytics"}
+            </button>
+          )}
+        </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
