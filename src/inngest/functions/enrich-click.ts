@@ -158,9 +158,7 @@ export const enrichClickFunction = inngest.createFunction(
     const clickResult = await step.run("insert-click-event", async () => {
       const adminClient = createAdminClient();
 
-      const isBotRaw = /(bot|crawler|spider|crawl|scraper|pingdom|headless)/i.test(userAgent || "");
-      const isFacebook = /(facebookexternalhit|facebot|facebook)/i.test(userAgent || "");
-      const isBot = isBotRaw && !isFacebook;
+      const isBot = /(bot|crawler|spider|crawl|scraper|pingdom|headless|facebookexternalhit|facebot|googlebot|bingbot|yandexbot|baiduspider|twitterbot|linkedinbot|embedly|quora|pinterest|slackbot|vkShare|W3C_Validator)/i.test(userAgent || "");
 
       let isSelfClick = false;
       if (ip && userId) {

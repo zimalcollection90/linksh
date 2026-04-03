@@ -27,6 +27,10 @@ function detectBrowser(userAgent: string) {
   if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) return "Safari";
   if (/edge|edg/i.test(userAgent)) return "Edge";
   if (/opera|opr/i.test(userAgent)) return "Opera";
+  if (/facebookexternalhit|facebot/i.test(userAgent)) return "Facebook Scraper";
+  if (/googlebot/i.test(userAgent)) return "Googlebot";
+  if (/twitterbot/i.test(userAgent)) return "Twitterbot";
+  if (/linkedinbot/i.test(userAgent)) return "LinkedInbot";
   return "Other";
 }
 
