@@ -1,0 +1,100 @@
+﻿
+> build
+> next build
+
+node.exe : [baseline-browser-mapping] 
+The data in this module is over two 
+months old.  To ensure accurate 
+Baseline data, please update: `npm i 
+baseline-browser-mapping@latest -D`
+At C:\Program Files\nodejs\npm.ps1:29 
+char:3
++   & $NODE_EXE $NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpeci 
+   fied: ([baseline-brows...ping@late  
+  st -D`:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCo 
+   mmandError
+ 
+   Γû▓ Next.js 16.0.10 (Turbopack)
+   - Environments: .env
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in 
+this module is over two months old.  
+To ensure accurate Baseline data, 
+please update: `npm i 
+baseline-browser-mapping@latest -D`
+(node:14808) ExperimentalWarning: Type 
+Stripping is an experimental feature 
+and might change at any time
+(Use `node --trace-warnings ...` to 
+show where the warning was created)
+ Γ£ô Compiled successfully in 21.3s
+   Running TypeScript ...
+   Collecting page data using 3 workers ...
+[baseline-browser-mapping] The data in 
+this module is over two months old.  
+To ensure accurate Baseline data, 
+please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in 
+this module is over two months old.  
+To ensure accurate Baseline data, 
+please update: `npm i 
+baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in 
+this module is over two months old.  
+To ensure accurate Baseline data, 
+please update: `npm i 
+baseline-browser-mapping@latest -D`
+ ΓÜá Using edge runtime on a page 
+currently disables static generation 
+for that page
+   Generating static pages using 3 workers (0/24) ...
+[baseline-browser-mapping] The data in 
+this module is over two months old.  
+To ensure accurate Baseline data, 
+please update: `npm i 
+baseline-browser-mapping@latest -D`
+   Generating static pages using 3 workers (6/24) 
+   Generating static pages using 3 workers (12/24) 
+   Generating static pages using 3 workers (18/24) 
+ Γ£ô Generating static pages using 3 workers (24/24) in 2.0s
+   Finalizing page optimization ...
+
+Route (app)
+Γöî ╞Æ /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /[code]
+Γö£ ╞Æ /api/admin/earnings/export
+Γö£ ╞Æ /api/admin/members
+Γö£ ╞Æ /api/admin/members/export
+Γö£ ╞Æ /api/admin/repair-geo
+Γö£ ╞Æ /api/analytics/overview
+Γö£ ╞Æ /api/earnings
+Γö£ ╞Æ /api/inngest
+Γö£ ╞Æ /api/invites
+Γö£ ╞Æ /api/links
+Γö£ ╞Æ /auth/callback
+Γö£ ╞Æ /dashboard
+Γö£ ╞Æ /dashboard/analytics
+Γö£ ╞Æ /dashboard/links
+Γö£ ╞Æ /dashboard/links/[id]
+Γö£ ╞Æ /dashboard/members
+Γö£ ╞Æ /dashboard/members/[id]
+Γö£ ╞Æ /dashboard/reset-password
+Γö£ ╞Æ /dashboard/settings
+Γö£ ╞Æ /forgot-password
+Γö£ ╞Æ /invite
+Γö£ ╞Æ /sign-in
+Γö£ ╞Æ /sign-up
+Γöö ╞Æ /u/[username]
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

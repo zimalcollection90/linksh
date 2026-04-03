@@ -46,7 +46,10 @@ export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "click_events" },
         async (payload) => {
-          const newClick = payload.new as ClickEvent;
+          const newClick = payload.new as any;
+          // Filter out bots and non-unique clicks from real-time feed
+          if (newClick.is_bot || newClick.is_filtered || !newClick.is_unique) return;
+
           if (newClick.links === undefined) {
             const { data: linkData } = await supabase
               .from("links")

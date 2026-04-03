@@ -2,7 +2,9 @@ import { createClient } from "../../../../supabase/server";
 import LinksClient from "./links-client";
 import { redirect } from "next/navigation";
 
-export default async function LinksPage() {
+export default async function LinksPage(props: { searchParams: Promise<{ view?: string }> }) {
+  const searchParams = await props.searchParams;
+  const view = searchParams.view;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return null;
@@ -14,25 +16,31 @@ export default async function LinksPage() {
     .single();
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
+  const isOwnView = view === "own";
 
   // Non-active, non-admin users redirect to dashboard (which shows pending/suspended message)
   if (profile?.status !== "active" && !isAdmin) {
     return redirect("/dashboard");
   }
 
-  const query = isAdmin
-    ? supabase
-        .from("links")
-        .select("*, users(full_name, display_name, email)")
-        .eq("user_id", profile?.id ?? user.id)
-        .order("created_at", { ascending: false })
-    : supabase
-        .from("links")
-        .select("*")
-        .eq("user_id", profile?.id ?? user.id)
-        .order("created_at", { ascending: false });
+  let query = supabase.from("links").select("*, users(full_name, display_name, email)");
 
-  const { data: links } = await query;
+  if (isAdmin) {
+    if (isOwnView) {
+      query = query.eq("user_id", user.id);
+    }
+    // else: show all links for admins by default or if view=all
+  } else {
+    query = query.eq("user_id", user.id);
+  }
 
-  return <LinksClient links={links || []} isAdmin={isAdmin} />;
+  const { data: links } = await query.order("created_at", { ascending: false });
+
+  return (
+    <LinksClient 
+      links={links || []} 
+      isAdmin={isAdmin} 
+      view={isAdmin ? (isOwnView ? "own" : "all") : "own"} 
+    />
+  );
 }

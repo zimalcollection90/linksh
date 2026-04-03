@@ -2,7 +2,7 @@
 
 import React from "react";
 import { motion } from "framer-motion";
-import { Link2, MousePointerClick, Users, DollarSign, TrendingUp, TrendingDown, ShieldCheck, Bot, FilterX, UserCheck } from "lucide-react";
+import { Link2, MousePointerClick, Users, DollarSign, TrendingUp, TrendingDown, ShieldCheck, UserCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface StatCardProps {
@@ -113,8 +113,6 @@ interface KpiStatsProps {
     totalEarnings: number;
     realClicks?: number;
     uniqueUsers?: number;
-    filteredClicks?: number;
-    botExcluded?: number;
   };
   isAdmin?: boolean;
 }
@@ -135,24 +133,6 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
       icon: MousePointerClick,
       color: "teal" as const,
     },
-    ...(hasRealClickData
-      ? [
-          {
-            title: "Real Clicks",
-            value: stats.realClicks || 0,
-            icon: ShieldCheck,
-            color: "green" as const,
-            trend: undefined as number | undefined,
-          },
-          {
-            title: "Unique Users",
-            value: stats.uniqueUsers || 0,
-            icon: UserCheck,
-            color: "teal" as const,
-            trend: undefined as number | undefined,
-          },
-        ]
-      : []),
     ...(isAdmin
       ? [
           {
@@ -183,91 +163,6 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
           <StatCard key={card.title} {...card} delay={i * 0.08} />
         ))}
       </div>
-      {hasRealClickData && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <RealClickMetric
-            label="Filtered Out"
-            value={stats.filteredClicks || 0}
-            total={stats.totalClicks}
-            color="amber"
-            icon={FilterX}
-            description="Duplicate IPs / self-clicks"
-          />
-          <RealClickMetric
-            label="Bots Excluded"
-            value={stats.botExcluded || 0}
-            total={stats.totalClicks}
-            color="red"
-            icon={Bot}
-            description="Automated traffic"
-          />
-          <RealClickMetric
-            label="Real Traffic %"
-            value={stats.totalClicks > 0 ? Math.round(((stats.realClicks || 0) / stats.totalClicks) * 100) : 100}
-            total={100}
-            color="green"
-            icon={ShieldCheck}
-            description="Quality score"
-            suffix="%"
-          />
-          <RealClickMetric
-            label="Unique Rate"
-            value={stats.totalClicks > 0 ? Math.round(((stats.uniqueUsers || 0) / stats.totalClicks) * 100) : 100}
-            total={100}
-            color="teal"
-            icon={UserCheck}
-            description="Unique vs total"
-            suffix="%"
-          />
-        </div>
-      )}
     </div>
-  );
-}
-
-function RealClickMetric({
-  label,
-  value,
-  total,
-  color,
-  icon: Icon,
-  description,
-  suffix = "",
-}: {
-  label: string;
-  value: number;
-  total: number;
-  color: "amber" | "red" | "green" | "teal";
-  icon: React.ElementType;
-  description: string;
-  suffix?: string;
-}) {
-  const colorMap = {
-    amber: { text: "text-amber-400", bg: "bg-amber-500/10", bar: "bg-amber-400" },
-    red: { text: "text-red-400", bg: "bg-red-500/10", bar: "bg-red-400" },
-    green: { text: "text-green-400", bg: "bg-green-500/10", bar: "bg-green-400" },
-    teal: { text: "text-cyan-400", bg: "bg-cyan-500/10", bar: "bg-cyan-400" },
-  };
-  const c = colorMap[color];
-  const pct = total > 0 ? Math.min((value / total) * 100, 100) : 0;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="rounded-lg border border-border bg-card/50 p-3"
-    >
-      <div className="flex items-center gap-1.5 mb-2">
-        <div className={cn("w-6 h-6 rounded flex items-center justify-center", c.bg)}>
-          <Icon className={cn("w-3.5 h-3.5", c.text)} />
-        </div>
-        <span className="text-xs text-muted-foreground">{label}</span>
-      </div>
-      <p className={cn("text-lg font-bold", c.text)}>{value.toLocaleString()}{suffix}</p>
-      <div className="mt-1.5 h-1 rounded-full bg-muted overflow-hidden">
-        <div className={cn("h-full rounded-full transition-all duration-700", c.bar)} style={{ width: `${pct}%` }} />
-      </div>
-      <p className="text-[10px] text-muted-foreground mt-1">{description}</p>
-    </motion.div>
   );
 }

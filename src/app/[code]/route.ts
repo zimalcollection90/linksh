@@ -1,8 +1,10 @@
-import { NextRequest } from "next/server";
+import { NextRequest, after } from "next/server";
 import { createAdminClient } from "../../../supabase/admin";
 import { createClient } from "../../../supabase/server";
 import { CC_TO_COUNTRY } from "../../utils/geo";
 import { inngest } from "../../inngest/client";
+
+export const runtime = "edge";
 
 const isSkipCode = (code: string) => {
   return (
@@ -110,7 +112,7 @@ type FallbackResolvedLink = {
 };
 
 async function resolveLinkFallback(code: string): Promise<FallbackResolvedLink | null> {
-  const supabase = await createClient();
+  const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("links")
     .select("id, user_id, destination_url, is_password_protected, password_hash, expires_at")
@@ -171,8 +173,8 @@ export async function GET(
 
   const hasEdgeGeo = Boolean(edgeCountryCode && edgeCountry);
 
-  // Try the fast RPC path first
-  const supabase = await createClient();
+  // Use Admin Client for the critical path to avoid auth overhead in redirect
+  const supabase = createAdminClient();
   const { data, error } = await supabase.rpc("resolve_link_and_log_click", {
     p_code: code,
     p_ip: ip,
@@ -182,19 +184,12 @@ export async function GET(
     p_browser: browser,
     p_os: os,
     p_password: pw || null,
-    // Pass null — Inngest will do the full geo enrichment including click insert
     p_country: null,
     p_country_code: null,
     p_city: null,
   });
 
   if (error) {
-    console.error("[redirect] resolve rpc failed, trying fallback", {
-      code,
-      errorCode: error.code,
-      errorMessage: error.message,
-    });
-
     const fallbackLink = await resolveLinkFallback(code);
     if (!fallbackLink) {
       return new Response("Not Found", { status: 404 });
@@ -216,27 +211,29 @@ export async function GET(
       }
     }
 
-    // Send event to Inngest — this returns instantly and Inngest handles everything async
-    try {
-      await inngest.send({
-        name: "analytics/click.recorded",
-        data: {
-          ip,
-          linkId: fallbackLink.id,
-          userId: fallbackLink.user_id,
-          userAgent,
-          referer,
-          deviceType,
-          browser,
-          os,
-          countryHint: hasEdgeGeo ? edgeCountry : null,
-          countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
-          cityHint: hasEdgeGeo ? edgeCity : null,
-        },
-      });
-    } catch (err: any) {
-      console.error("[redirect] inngest.send failed (fallback path):", err?.message);
-    }
+    // Move Inngest into 'after' — non-blocking
+    after(async () => {
+      try {
+        await inngest.send({
+          name: "analytics/click.recorded",
+          data: {
+            ip,
+            linkId: fallbackLink.id,
+            userId: fallbackLink.user_id,
+            userAgent,
+            referer,
+            deviceType,
+            browser,
+            os,
+            countryHint: hasEdgeGeo ? edgeCountry : null,
+            countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
+            cityHint: hasEdgeGeo ? edgeCity : null,
+          },
+        });
+      } catch (err: any) {
+        console.error("[redirect] inngest.send failed (fallback path):", err?.message);
+      }
+    });
 
     return redirectResponse(fallbackLink.destination_url);
   }
@@ -254,50 +251,46 @@ export async function GET(
     return new Response("Not Found", { status: 404 });
   }
 
-  // The RPC already inserted a skeleton click_event row (with null geo).
-  // Send Inngest event to enrich geo on that existing row — OR use the full insert path.
-  // For simplicity we always use Inngest's full insert path by NOT passing an existing row ID.
-  // However, if the RPC already created a row we should update it rather than insert a duplicate.
-  // We handle this by checking clickEventId:
-  if (clickEventId) {
-    // Enrich the existing row that the RPC created
-    try {
-      await inngest.send({
-        name: "analytics/enrich.existing",
-        data: {
-          clickEventId,
-          ip,
-          countryHint: hasEdgeGeo ? edgeCountry : null,
-          countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
-          cityHint: hasEdgeGeo ? edgeCity : null,
-        },
-      });
-    } catch (err: any) {
-      console.error("[redirect] inngest.send (enrich existing) failed:", err?.message);
+  // Move Analytics/Inngest into 'after' — non-blocking
+  after(async () => {
+    if (clickEventId) {
+      try {
+        await inngest.send({
+          name: "analytics/enrich.existing",
+          data: {
+            clickEventId,
+            ip,
+            countryHint: hasEdgeGeo ? edgeCountry : null,
+            countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
+            cityHint: hasEdgeGeo ? edgeCity : null,
+          },
+        });
+      } catch (err: any) {
+        console.error("[redirect] inngest.send (enrich existing) failed:", err?.message);
+      }
+    } else {
+      try {
+        await inngest.send({
+          name: "analytics/click.recorded",
+          data: {
+            ip,
+            linkId: row?.link_id ?? null,
+            userId: row?.user_id ?? null,
+            userAgent,
+            referer,
+            deviceType,
+            browser,
+            os,
+            countryHint: hasEdgeGeo ? edgeCountry : null,
+            countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
+            cityHint: hasEdgeGeo ? edgeCity : null,
+          },
+        });
+      } catch (err: any) {
+        console.error("[redirect] inngest.send failed:", err?.message);
+      }
     }
-  } else {
-    // RPC did not create a click_event — send full insert event
-    try {
-      await inngest.send({
-        name: "analytics/click.recorded",
-        data: {
-          ip,
-          linkId: row?.link_id ?? null,
-          userId: row?.user_id ?? null,
-          userAgent,
-          referer,
-          deviceType,
-          browser,
-          os,
-          countryHint: hasEdgeGeo ? edgeCountry : null,
-          countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
-          cityHint: hasEdgeGeo ? edgeCity : null,
-        },
-      });
-    } catch (err: any) {
-      console.error("[redirect] inngest.send failed:", err?.message);
-    }
-  }
+  });
 
   return redirectResponse(destinationUrl);
 }

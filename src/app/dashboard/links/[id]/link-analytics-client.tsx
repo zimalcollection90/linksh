@@ -7,7 +7,7 @@ import {
   AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, BarChart, Bar, CartesianGrid
 } from "recharts";
-import { ArrowLeft, Copy, Check, ExternalLink, Globe, Monitor, AlertTriangle, Shield, ShieldCheck, Bot, FilterX, UserCheck } from "lucide-react";
+import { ArrowLeft, Copy, Check, ExternalLink, Globe, Monitor, AlertTriangle, Shield, UserCheck, MousePointerClick } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { format, subDays } from "date-fns";
@@ -145,9 +145,7 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
   };
 
   const realClicks = clicks.filter(c => !c.is_bot && c.is_unique && !c.is_filtered);
-  const botClicks = clicks.filter(c => c.is_bot);
-  const filteredClicks = clicks.filter(c => c.is_filtered && !c.is_bot);
-  const displayClicks = view === "real" ? realClicks : clicks;
+  const displayClicks = realClicks;
 
   const clicksByDay = processClicksByDay(clicks);
   const byCountry = processCountryData(displayClicks);
@@ -163,12 +161,6 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
   const isFraudFlagged = link.is_fraud_flagged || avgQuality < 50;
   // Unique countries as a proxy for unique users (ip_address not in select query)
   const uniqueVisitors = new Set(realClicks.map(c => c.country).filter(c => c && !["unknown", "other"].includes(c.toLowerCase()))).size;
-
-  const filterReasons = filteredClicks.reduce((acc: Record<string, number>, c) => {
-    const r = c.filter_reason || "other";
-    acc[r] = (acc[r] || 0) + 1;
-    return acc;
-  }, {});
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">
@@ -226,8 +218,7 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
       {/* Real Click Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Clicks", value: clicks.length, color: "text-muted-foreground", icon: null },
-          { label: "Real Clicks", value: realClicks.length, color: "text-green-400", icon: ShieldCheck },
+          { label: "Total Clicks", value: realClicks.length, color: "text-primary", icon: MousePointerClick },
           { label: "Unique Visitors", value: uniqueVisitors, color: "text-cyan-400", icon: UserCheck },
           { label: "Quality Score", value: `${avgQuality}%`, color: avgQuality >= 70 ? "text-green-400" : avgQuality >= 40 ? "text-amber-400" : "text-red-400", icon: Shield },
         ].map((stat, i) => (
@@ -247,63 +238,7 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
         ))}
       </div>
 
-      {/* Filter Breakdown */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="rounded-xl border border-border bg-card/50 p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center flex-shrink-0">
-            <Bot className="w-5 h-5 text-red-400" />
-          </div>
-          <div>
-            <p className="text-lg font-bold text-red-400">{botClicks.length}</p>
-            <p className="text-xs text-muted-foreground">Bots Excluded</p>
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card/50 p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center flex-shrink-0">
-            <FilterX className="w-5 h-5 text-amber-400" />
-          </div>
-          <div>
-            <p className="text-lg font-bold text-amber-400">{filteredClicks.length}</p>
-            <p className="text-xs text-muted-foreground">Filtered Clicks</p>
-            {Object.keys(filterReasons).length > 0 && (
-              <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-                {Object.entries(filterReasons).map(([r, n]) => `${r.replace(/_/g, " ")}: ${n}`).join(" · ")}
-              </p>
-            )}
-          </div>
-        </div>
-        <div className="rounded-xl border border-border bg-card/50 p-4 flex items-center gap-3">
-          <div className="w-9 h-9 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
-            <ShieldCheck className="w-5 h-5 text-green-400" />
-          </div>
-          <div>
-            <p className="text-lg font-bold text-green-400">{realClicks.length}</p>
-            <p className="text-xs text-muted-foreground">Real Verified Clicks</p>
-            <p className="text-[10px] text-muted-foreground/70 mt-0.5">
-              {clicks.length > 0 ? Math.round((realClicks.length / clicks.length) * 100) : 100}% of total
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* View Toggle */}
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">Show analytics for:</span>
-        <div className="flex rounded-lg border border-border overflow-hidden">
-          <button
-            onClick={() => setView("real")}
-            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "real" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-muted")}
-          >
-            Real Clicks Only
-          </button>
-          <button
-            onClick={() => setView("all")}
-            className={cn("px-3 py-1.5 text-xs font-medium transition-colors", view === "all" ? "bg-primary text-white" : "text-muted-foreground hover:text-foreground hover:bg-muted")}
-          >
-            All Clicks
-          </button>
-        </div>
-      </div>
+      {/* View Toggle removed for simplicity */}
 
       {/* Click Timeline */}
       <div className="rounded-xl border border-border bg-card p-5">
@@ -324,13 +259,11 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
             <XAxis dataKey="date" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} interval={2} />
             <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
             <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
-            <Area type="monotone" dataKey="count" name="Total" stroke="#7C3AED" strokeWidth={1.5} fill="url(#clickGradient)" dot={false} activeDot={{ r: 4, fill: "#7C3AED" }} strokeDasharray="4 2" />
-            <Area type="monotone" dataKey="real" name="Real Clicks" stroke="#22D3EE" strokeWidth={2} fill="url(#realGradient)" dot={false} activeDot={{ r: 4, fill: "#22D3EE" }} />
+            <Area type="monotone" dataKey="real" name="Clicks" stroke="#7C3AED" strokeWidth={2} fill="url(#clickGradient)" dot={false} activeDot={{ r: 4, fill: "#7C3AED" }} />
           </AreaChart>
         </ResponsiveContainer>
         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 inline-block opacity-50" style={{ borderTop: "2px dashed #7C3AED" }}></span>Total Clicks</span>
-          <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-cyan-400 inline-block"></span>Real Clicks</span>
+          <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-primary inline-block"></span>Total Clicks</span>
         </div>
       </div>
 

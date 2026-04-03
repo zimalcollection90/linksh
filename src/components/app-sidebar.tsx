@@ -31,13 +31,38 @@ interface NavItem {
   label: string;
   badge?: number;
   adminOnly?: boolean;
+  exact?: boolean;
 }
 
-const navItems: NavItem[] = [
+interface NavSection {
+  label?: string;
+  items: NavItem[];
+}
+
+const adminSections: NavSection[] = [
+  {
+    label: "Platform",
+    items: [
+      { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard", exact: true },
+      { href: "/dashboard/links", icon: Link2, label: "All Links", exact: true },
+      { href: "/dashboard/analytics", icon: BarChart3, label: "All Analytics", exact: true },
+      { href: "/dashboard/members", icon: Users, label: "Members" },
+    ]
+  },
+  {
+    label: "Personal",
+    items: [
+      { href: "/dashboard/links?view=own", icon: Link2, label: "My Links" },
+      { href: "/dashboard/analytics?view=own", icon: BarChart3, label: "My Analytics" },
+      { href: "/dashboard/settings", icon: Settings, label: "Settings" },
+    ]
+  }
+];
+
+const memberItems: NavItem[] = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
   { href: "/dashboard/links", icon: Link2, label: "Links" },
   { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
-  { href: "/dashboard/members", icon: Users, label: "Members", adminOnly: true },
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
 
@@ -76,10 +101,13 @@ export default function AppSidebar() {
   const isAdmin =
     profile?.role === "admin" ||
     profile?.role === "super_admin";
-  const visibleItems = navItems.filter(item => !item.adminOnly || isAdmin);
 
   const displayName = profile?.display_name || profile?.full_name || user?.email?.split("@")[0] || "User";
   const initials = displayName.slice(0, 2).toUpperCase();
+
+  const sections = isAdmin 
+    ? adminSections 
+    : [{ label: "", items: memberItems }];
 
   return (
     <TooltipProvider>
@@ -105,51 +133,58 @@ export default function AppSidebar() {
         </div>
 
         {/* Navigation */}
-        <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
-          {visibleItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-            const content = (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
-                  collapsed && "justify-center px-2",
-                  isActive
-                    ? "bg-primary/15 text-primary border-l-2 border-primary"
-                    : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
-                )}
-              >
-                <Icon className={cn("w-5 h-5 flex-shrink-0", isActive && "text-primary")} />
-                {!collapsed && (
-                  <span className="text-sm font-medium">{item.label}</span>
-                )}
-                {!collapsed && item.badge && (
-                  <Badge className="ml-auto text-xs py-0 px-1.5 bg-primary/20 text-primary border-0">
-                    {item.badge}
-                  </Badge>
-                )}
-                {isActive && !collapsed && (
-                  <div className="absolute inset-0 rounded-lg" style={{
-                    boxShadow: 'inset 0 0 20px rgba(124, 58, 237, 0.1)'
-                  }} />
-                )}
-              </Link>
-            );
+        <nav className="flex-1 px-2 py-4 space-y-6 overflow-y-auto custom-scrollbar">
+          {sections.map((section, sIdx) => (
+            <div key={sIdx} className="space-y-1">
+              {!collapsed && section.label && (
+                <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/40 mb-2">
+                  {section.label}
+                </p>
+              )}
+              {section.items.map((item) => {
+                const Icon = item.icon;
+                const isActive = item.exact 
+                  ? pathname === item.href 
+                  : pathname === item.href || (pathname.startsWith(item.href + "/") && item.href !== "/dashboard");
 
-            if (collapsed) {
-              return (
-                <Tooltip key={item.href} delayDuration={0}>
-                  <TooltipTrigger asChild>{content}</TooltipTrigger>
-                  <TooltipContent side="right" className="bg-sidebar text-sidebar-foreground border-sidebar-border">
-                    {item.label}
-                  </TooltipContent>
-                </Tooltip>
-              );
-            }
-            return content;
-          })}
+                const content = (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+                      collapsed && "justify-center px-2",
+                      isActive
+                        ? "bg-primary/15 text-primary border-l-2 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]"
+                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                    )}
+                  >
+                    <Icon className={cn("w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110", isActive && "text-primary")} />
+                    {!collapsed && (
+                      <span className="text-sm font-medium">{item.label}</span>
+                    )}
+                    {!collapsed && item.badge && (
+                      <Badge className="ml-auto text-xs py-0 px-1.5 bg-primary/20 text-primary border-0">
+                        {item.badge}
+                      </Badge>
+                    )}
+                  </Link>
+                );
+
+                if (collapsed) {
+                  return (
+                    <Tooltip key={item.href} delayDuration={0}>
+                      <TooltipTrigger asChild>{content}</TooltipTrigger>
+                      <TooltipContent side="right" className="bg-sidebar text-sidebar-foreground border-sidebar-border font-medium">
+                        {item.label}
+                      </TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return content;
+              })}
+            </div>
+          ))}
         </nav>
 
         {/* Bottom section */}

@@ -37,7 +37,15 @@ const statusColors: Record<string, string> = {
   paused: "bg-slate-500/10 text-slate-400 border-slate-500/20",
 };
 
-export default function LinksClient({ links: initialLinks, isAdmin }: { links: LinkItem[]; isAdmin: boolean }) {
+export default function LinksClient({ 
+  links: initialLinks, 
+  isAdmin, 
+  view = "own" 
+}: { 
+  links: LinkItem[]; 
+  isAdmin: boolean; 
+  view?: "own" | "all";
+}) {
   const [links, setLinks] = useState(initialLinks);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<string>("all");
@@ -45,7 +53,7 @@ export default function LinksClient({ links: initialLinks, isAdmin }: { links: L
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editLink, setEditLink] = useState<LinkItem | null>(null);
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-
+  
   const handleCopy = (shortCode: string, id: string) => {
     navigator.clipboard.writeText(`${baseUrl}/${shortCode}`);
     setCopiedId(id);
@@ -76,7 +84,7 @@ export default function LinksClient({ links: initialLinks, isAdmin }: { links: L
 
   const refreshLinks = async () => {
     try {
-      const res = await fetch("/api/links", { cache: "no-store" });
+      const res = await fetch("/api/links" + (view === "own" ? "?view=own" : ""), { cache: "no-store" });
       const json = await res.json();
       if (res.ok && Array.isArray(json?.links)) {
         setLinks(json.links);
@@ -91,8 +99,12 @@ export default function LinksClient({ links: initialLinks, isAdmin }: { links: L
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Links</h1>
-          <p className="text-sm text-muted-foreground mt-1">{links.length} total links</p>
+          <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>
+            {view === "all" ? "All Platform Links" : "My Links"}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {view === "all" ? `${links.length} platform-wide links` : `${links.length} personal links`}
+          </p>
         </div>
         <Button
           className="gap-2 bg-primary hover:bg-primary/90 text-white"

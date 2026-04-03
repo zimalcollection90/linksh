@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
+  const view = searchParams.get("view");
 
   const query = supabase
     .from("links")
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     )
     .order("created_at", { ascending: false });
 
-  if (ctx.role === "member") {
+  if (ctx.role === "member" || (ctx.role === "admin" && view === "own")) {
     query.eq("user_id", ctx.userId);
   }
 

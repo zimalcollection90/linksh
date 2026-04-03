@@ -13,6 +13,7 @@ import WorldHeatmap from "../components/world-heatmap";
 import { getCountryName } from "../../../utils/geo";
 import { ComposableMap } from "react-simple-maps";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 const COLORS = ["#7C3AED", "#0EA5E9", "#22D3EE", "#A78BFA", "#38BDF8", "#818CF8"];
 
@@ -46,9 +47,10 @@ function processCountryData(clicks: any[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks
     .filter((c) => {
-      // PERMISSIVE QUALITY FILTER: Include NULL values to show historical data, only exclude confirmed bots/duplicates
+      // Human-only and UNIQUE clicks only
       if (c.is_bot === true) return false;
       if (c.is_filtered === true) return false;
+      if (c.is_unique !== true) return false;
       return true;
     })
     .forEach((c) => {
@@ -73,7 +75,7 @@ function processCountryData(clicks: any[]) {
 function processHeatmapData(clicks: any[]) {
   const counts: Record<string, number> = {};
   clicks
-    .filter((c) => c.is_bot !== true && c.is_filtered !== true)
+    .filter((c) => c.is_bot !== true && c.is_filtered !== true && c.is_unique === true)
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
       if (code && code !== "XX" && code !== "UN" && code.length === 2) {
@@ -85,8 +87,15 @@ function processHeatmapData(clicks: any[]) {
 
 function processGrouped(clicks: any[], field: string) {
   const counts: Record<string, number> = {};
+  const botIdentifiers = ["facebook scraper", "googlebot", "bingbot", "ahrefsbot", "twitterbot", "bot", "crawler", "spider"];
+  
   clicks.forEach((c) => {
     const val = (c[field] as string) || "Other";
+    // Filter out bots and non-unique from grouped data
+    const lowVal = val.toLowerCase();
+    if (botIdentifiers.some(bot => lowVal.includes(bot))) return;
+    if (c.is_unique !== true) return;
+    
     counts[val] = (counts[val] || 0) + 1;
   });
   return Object.entries(counts)
@@ -114,16 +123,26 @@ function processClicksByMonth(clicks: any[]) {
     });
 }
 
+import RangeSelector from "../components/range-selector";
+
 export default function AnalyticsClient({
   links,
   clicks,
   isAdmin,
   members = [],
+  stats,
+  geoStats = [],
+  currentRange = "30d",
+  view = "own",
 }: {
   links: any[];
   clicks: any[];
   isAdmin: boolean;
   members?: any[];
+  stats?: any;
+  geoStats?: any[];
+  currentRange?: string;
+  view?: "own" | "all";
 }) {
   const [hasMounted, setHasMounted] = React.useState(false);
   const [isRepairing, setIsRepairing] = React.useState(false);
@@ -150,9 +169,26 @@ export default function AnalyticsClient({
     }
   };
 
+  const rangeLabel = {
+    today: "today",
+    "7d": "last 7 days",
+    "30d": "last 30 days",
+    "90d": "last 90 days",
+    all: "all time",
+  }[currentRange || "30d"] || "last 30 days";
+
   const clicksByDay = processClicksByDay(clicks);
   const clicksByMonth = processClicksByMonth(clicks);
-  const byCountry = processCountryData(clicks);
+  
+  // Use server-provided geoStats if available, otherwise fallback to processing the clicks array (for local filtering/re-repair)
+  const byCountry = geoStats && geoStats.length > 0 
+    ? geoStats.map(gs => ({ 
+        name: gs.country || "Unknown Location", 
+        code: gs.country_code, 
+        value: Number(gs.click_count) 
+      }))
+    : processCountryData(clicks);
+
   const heatmapData = processHeatmapData(clicks);
   const byDevice = processGrouped(clicks, "device_type");
   const byBrowser = processGrouped(clicks, "browser");
@@ -160,16 +196,9 @@ export default function AnalyticsClient({
 
   if (!hasMounted) return null;
 
-
-  const realClicks = clicks.filter((c) => c.is_bot !== true && c.is_filtered !== true);
-  const totalClicks = links.reduce((s, l) => s + (l.click_count || 0), 0);
-  const countriesWithData = realClicks.map(c => {
-    const code = (c.country_code || "").toUpperCase();
-    return c.country && !["unknown", "other"].includes(c.country.toLowerCase()) 
-      ? c.country 
-      : getCountryName(code);
-  }).filter(Boolean);
-  const knownCountries = new Set(countriesWithData).size;
+  const totalClicksCount = stats ? Number(stats.total_clicks) : clicks.filter((c) => c.is_bot !== true && c.is_filtered !== true && c.is_unique === true).length;
+  
+  const knownCountries = byCountry.length;
   const activeLinks = links.filter((l) => l.status === "active").length;
 
   const topLinks = [...links]
@@ -178,25 +207,15 @@ export default function AnalyticsClient({
 
   const memberRows = isAdmin
     ? (members || []).map((m: any) => {
-        const ownLinks = links.filter((l) => l.user_id === m.id);
-        const ownLinkIds = new Set(ownLinks.map((l) => l.id));
-        const ownClicks = clicks.filter((c) => ownLinkIds.has(c.link_id));
-        const countryCount = new Set(ownClicks.map((c) => c.country_code).filter(Boolean)).size;
-        const monthCount = ownClicks.filter((c) => {
-          if (!c.clicked_at) return false;
-          const now = new Date();
-          const dt = new Date(c.clicked_at);
-          return dt.getUTCFullYear() === now.getUTCFullYear() && dt.getUTCMonth() === now.getUTCMonth();
-        }).length;
+        // Members already has stats from get_members_with_stats_v3
         return {
           id: m.id,
           name: m.display_name || m.full_name || m.email || "Member",
           role: m.role || "member",
           status: m.status || "pending",
-          links: ownLinks.length,
-          totalClicks: ownClicks.length,
-          monthClicks: monthCount,
-          countries: countryCount,
+          links: m.link_count || 0,
+          totalClicks: m.total_clicks || 0,
+          realClicks: m.real_clicks || 0,
         };
       })
     : [];
@@ -205,32 +224,39 @@ export default function AnalyticsClient({
     <div className="space-y-6 max-w-[1200px] mx-auto">
         <div className="flex items-center justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>Analytics</h1>
-            <p className="text-sm text-muted-foreground mt-1">Detailed insights across all your links.</p>
+            <h1 className="text-2xl font-bold" style={{ fontFamily: "Syne, sans-serif" }}>
+              {view === "all" ? "Platform Analytics" : "My Analytics"}
+            </h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              {view === "all" ? "Broad platform insights across all members" : "Personal performance metrics for your links"} {rangeLabel}.
+            </p>
           </div>
-          {isAdmin && (
-            <button 
-              onClick={handleRepair}
-              disabled={isRepairing}
-              className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
-            >
-              {isRepairing ? "Repairing..." : "Repair Pending Analytics"}
-            </button>
-          )}
+          <div className="flex items-center gap-3">
+            <RangeSelector />
+            {isAdmin && (
+              <button 
+                onClick={handleRepair}
+                disabled={isRepairing}
+                className="px-4 py-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/20 rounded-lg text-xs font-semibold transition-all disabled:opacity-50"
+              >
+                {isRepairing ? "Repairing..." : "Repair Geo"}
+              </button>
+            )}
+          </div>
         </div>
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Clicks", value: totalClicks.toLocaleString(), color: "text-primary" },
-          { label: "Real Clicks", value: realClicks.length.toLocaleString(), color: "text-emerald-400" },
+          { label: "Total Clicks", value: totalClicksCount.toLocaleString(), color: "text-primary" },
           { label: "Countries", value: knownCountries, color: "text-cyan-400" },
           { label: "Active Links", value: activeLinks, color: "text-amber-400" },
+          { label: "Earnings", value: `$${stats?.total_earnings || 0}`, color: "text-emerald-400" },
         ].map((stat, i) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}
             className="rounded-xl border border-border bg-card p-4">
-            <p className={`text-2xl font-bold ${stat.color}`}>{stat.value}</p>
-            <p className="text-xs text-muted-foreground mt-1">{stat.label}</p>
+            <p className={`text-xl font-bold ${stat.color}`}>{stat.value}</p>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-1 font-semibold">{stat.label}</p>
           </motion.div>
         ))}
       </div>
@@ -396,24 +422,24 @@ export default function AnalyticsClient({
                     <th className="text-left text-xs text-muted-foreground pb-2">Member</th>
                     <th className="text-left text-xs text-muted-foreground pb-2">Role</th>
                     <th className="text-left text-xs text-muted-foreground pb-2">Status</th>
-                    <th className="text-left text-xs text-muted-foreground pb-2">Links</th>
-                    <th className="text-left text-xs text-muted-foreground pb-2">Total Clicks</th>
-                    <th className="text-left text-xs text-muted-foreground pb-2">This Month</th>
-                    <th className="text-left text-xs text-muted-foreground pb-2">Countries</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2 text-right">Links</th>
+                    <th className="text-left text-xs text-muted-foreground pb-2 text-right">Clicks</th>
                   </tr>
                 </thead>
                 <tbody>
                   {memberRows
                     .sort((a: any, b: any) => b.totalClicks - a.totalClicks)
                     .map((row: any) => (
-                      <tr key={row.id} className="border-b border-border/30 last:border-0">
-                        <td className="py-2 text-sm">{row.name}</td>
-                        <td className="py-2 text-xs text-muted-foreground">{row.role}</td>
-                        <td className="py-2 text-xs text-muted-foreground">{row.status}</td>
-                        <td className="py-2 text-sm">{row.links}</td>
-                        <td className="py-2 text-sm">{row.totalClicks.toLocaleString()}</td>
-                        <td className="py-2 text-sm">{row.monthClicks.toLocaleString()}</td>
-                        <td className="py-2 text-sm">{row.countries}</td>
+                      <tr key={row.id} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
+                        <td className="py-3 text-sm font-medium">{row.name}</td>
+                        <td className="py-3 text-xs text-muted-foreground">{row.role}</td>
+                        <td className="py-3 text-xs">
+                          <span className={cn("px-2 py-0.5 rounded-full", row.status === "active" ? "bg-emerald-500/10 text-emerald-400" : "bg-amber-500/10 text-amber-400")}>
+                            {row.status}
+                          </span>
+                        </td>
+                        <td className="py-3 text-sm text-right font-mono">{row.links}</td>
+                        <td className="py-3 text-sm text-right font-mono font-bold text-primary">{row.totalClicks.toLocaleString()}</td>
                       </tr>
                     ))}
                 </tbody>
