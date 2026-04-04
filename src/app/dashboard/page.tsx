@@ -230,7 +230,10 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
       : Promise.resolve({ count: 0 })
   ]);
 
-  const monthlyGoal = parseInt(goalRes.data?.value || "1000");
+  const globalGoal = parseInt(goalRes.data?.value || "1000");
+  const monthlyGoal = profile?.monthly_click_goal && profile.monthly_click_goal > 0
+    ? profile.monthly_click_goal
+    : globalGoal;
   const monthlyClicks = monthlyClicksRes.count || 0;
 
 

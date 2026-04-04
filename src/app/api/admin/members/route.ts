@@ -24,7 +24,7 @@ export async function GET(req: NextRequest) {
   // Fetch all users directly — no company filtering
   const { data: users, error: uErr } = await supabase
     .from("users")
-    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, earnings_rate, last_active_at, last_seen_ip, monthly_click_goal")
     .order("created_at", { ascending: false });
 
   if (uErr) return NextResponse.json({ error: uErr.message }, { status: 400 });
@@ -178,6 +178,22 @@ export async function PATCH(req: NextRequest) {
            return NextResponse.json({ error: "Service Role Key required: Add SUPABASE_SERVICE_ROLE_KEY to your .env file to delete users" }, { status: 403 });
        }
        return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "set_goal") {
+    const goal = parseInt(body?.goal);
+    if (isNaN(goal) || goal < 0) {
+      return NextResponse.json({ error: "Invalid goal value" }, { status: 400 });
+    }
+    
+    for (const id of targetIds) {
+      const { error } = await actionClient
+        .from("users")
+        .update({ monthly_click_goal: goal, updated_at: new Date().toISOString() })
+        .eq("id", id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 400 });
     }
     return NextResponse.json({ ok: true });
   }

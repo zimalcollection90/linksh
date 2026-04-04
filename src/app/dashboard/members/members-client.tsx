@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   Search, Ban, CheckCircle, Users, MoreHorizontal, Shield, Download,
   BarChart2, Clock, ShieldCheck, Bot, FilterX, UserCheck, UserX, RefreshCw,
-  Wifi, TrendingUp, Activity
+  Wifi, TrendingUp, Activity, Target
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -165,6 +165,23 @@ export default function MembersClient({ members: initialMembers }: { members: an
     }
   };
 
+  const [goalDialog, setGoalDialog] = useState<{ open: boolean; memberId: string; currentGoal: number; name: string } | null>(null);
+  const [newGoal, setNewGoal] = useState<string>("");
+
+  const handleUpdateGoal = async (memberId: string, goal: number) => {
+    setProcessing(memberId);
+    try {
+      await callApi({ action: "set_goal", userId: memberId, goal });
+      setMembers((prev) => prev.map((m) => m.id === memberId ? { ...m, monthly_click_goal: goal } : m));
+      toast.success(`Goal updated to ${goal.toLocaleString()} clicks`);
+      setGoalDialog(null);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update goal");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-[1400px] mx-auto">
       {/* Header */}
@@ -303,6 +320,7 @@ export default function MembersClient({ members: initialMembers }: { members: an
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Member</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Role</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3">Status</th>
+                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">Goal</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">Links</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">
                   <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Clicks</span>
@@ -397,6 +415,14 @@ export default function MembersClient({ members: initialMembers }: { members: an
                       </Badge>
                     </td>
 
+                    {/* Goal */}
+                    <td className="px-4 py-3 hidden md:table-cell">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-bold text-primary">{(member.monthly_click_goal || 0).toLocaleString()}</span>
+                        <span className="text-[10px] text-muted-foreground uppercase font-medium">Clicks/mo</span>
+                      </div>
+                    </td>
+
                     {/* Links */}
                     <td className="px-4 py-3 hidden md:table-cell">
                       <span className="text-sm font-medium">{member.linkCount || 0}</span>
@@ -469,6 +495,16 @@ export default function MembersClient({ members: initialMembers }: { members: an
                               <Link href={`/dashboard/members/${member.id}`}>
                                 <BarChart2 className="w-3.5 h-3.5" /> View Analytics
                               </Link>
+                            </DropdownMenuItem>
+
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setNewGoal(member.monthly_click_goal?.toString() || "0");
+                                setGoalDialog({ open: true, memberId: member.id, currentGoal: member.monthly_click_goal || 0, name });
+                              }}
+                              className="gap-2"
+                            >
+                              <Target className="w-3.5 h-3.5" /> Set Monthly Goal
                             </DropdownMenuItem>
 
                             <DropdownMenuSeparator />
@@ -564,6 +600,45 @@ export default function MembersClient({ members: initialMembers }: { members: an
               onClick={() => confirmDialog && handleDelete(confirmDialog.memberId)}
             >
               Delete
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set Goal Dialog */}
+      <Dialog open={!!goalDialog?.open} onOpenChange={() => setGoalDialog(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "Syne, sans-serif" }}>Set Monthly Click Goal</DialogTitle>
+            <DialogDescription>
+              Set a custom monthly target for <strong>{goalDialog?.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Monthly Target (Clicks)</label>
+              <Input
+                type="number"
+                placeholder="e.g. 30000"
+                value={newGoal}
+                onChange={(e) => setNewGoal(e.target.value)}
+                className="bg-muted/50 font-mono"
+              />
+              <p className="text-[10px] text-muted-foreground italic">
+                Set to 0 to use the platform default.
+              </p>
+            </div>
+          </div>
+          <div className="flex gap-3 mt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setGoalDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={processing === goalDialog?.memberId}
+              onClick={() => goalDialog && handleUpdateGoal(goalDialog.memberId, parseInt(newGoal) || 0)}
+            >
+              Update Goal
             </Button>
           </div>
         </DialogContent>
