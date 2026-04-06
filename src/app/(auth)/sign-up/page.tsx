@@ -3,7 +3,6 @@ import { SubmitButton } from "@/components/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { SmtpMessage } from "../smtp-message";
 import { signUpAction } from "@/app/actions";
 import { UrlProvider } from "@/components/url-provider";
 import { Zap } from "lucide-react";
@@ -12,13 +11,6 @@ export default async function Signup(props: {
   searchParams: Promise<Message>;
 }) {
   const searchParams = await props.searchParams;
-  if ("message" in searchParams) {
-    return (
-      <div className="flex h-screen w-full flex-1 items-center justify-center p-4 sm:max-w-md">
-        <FormMessage message={searchParams} />
-      </div>
-    );
-  }
 
   return (
     <>
@@ -45,6 +37,8 @@ export default async function Signup(props: {
                   </p>
                 </div>
 
+                <FormMessage message={searchParams} />
+
                 <div className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="full_name" className="text-sm font-medium">Full Name</Label>
@@ -63,12 +57,9 @@ export default async function Signup(props: {
                 <SubmitButton formAction={signUpAction} pendingText="Creating account..." className="w-full bg-primary hover:bg-primary/90 text-white">
                   Create Account
                 </SubmitButton>
-
-                <FormMessage message={searchParams} />
               </form>
             </UrlProvider>
           </div>
-          <SmtpMessage />
         </div>
       </div>
     </>

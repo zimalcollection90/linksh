@@ -14,18 +14,9 @@ interface LoginProps {
   >;
 }
 
-export default async function SignInPage({ searchParams }: LoginProps) {
-  const sp = await searchParams;
-
-  if ("success" in sp || "error" in sp || "message" in sp) {
-    return (
-      <div className="flex h-screen w-full flex-1 items-center justify-center p-4 sm:max-w-md">
-        <FormMessage message={sp as Message} />
-      </div>
-    );
-  }
-
-  const redirectTo = sp.redirect_to;
+export default async function SignInPage(props: LoginProps) {
+  const searchParams = await props.searchParams;
+  const redirectTo = searchParams.redirect_to;
 
   return (
     <>
@@ -53,6 +44,8 @@ export default async function SignInPage({ searchParams }: LoginProps) {
                   </Link>
                 </p>
               </div>
+
+              <FormMessage message={searchParams as Message} />
 
               <div className="space-y-4">
                 <div className="space-y-2">

@@ -7,7 +7,7 @@ import {
   PieChart, Pie, Cell, BarChart, Bar
 } from "recharts";
 import { BarChart2, Globe, Monitor, Smartphone, Link2 } from "lucide-react";
-import { format, subDays } from "date-fns";
+import { format, subDays, subHours, startOfHour } from "date-fns";
 import Link from "next/link";
 import WorldHeatmap from "../components/world-heatmap";
 import { getCountryName } from "../../../utils/geo";
@@ -30,13 +30,35 @@ function getFlagEmoji(countryCode: string) {
   }
 }
 
-function processClicksByDay(clicks: any[]) {
-  const days = Array.from({ length: 30 }, (_, i) => {
-    const date = subDays(new Date(), 29 - i);
+function processClicksByDay(clicks: any[], range: string) {
+  if (range === "today") {
+    const hours = Array.from({ length: 24 }, (_, i) => {
+      const date = subHours(new Date(), 23 - i);
+      const start = startOfHour(date);
+      return { date: format(start, "HH:mm"), count: 0, dateStr: format(start, "yyyy-MM-dd HH") };
+    });
+    clicks.forEach((click) => {
+      if (!click.clicked_at) return;
+      const d = new Date(click.clicked_at);
+      const str = format(d, "yyyy-MM-dd HH");
+      const hour = hours.find((h) => h.dateStr === str);
+      if (hour) hour.count++;
+    });
+    return hours;
+  }
+
+  let length = 30;
+  if (range === "7d") length = 7;
+  else if (range === "90d" || range === "all") length = 90;
+
+  const days = Array.from({ length }, (_, i) => {
+    const date = subDays(new Date(), (length - 1) - i);
     return { date: format(date, "MMM d"), count: 0, dateStr: format(date, "yyyy-MM-dd") };
   });
   clicks.forEach((click) => {
-    const dateStr = click.clicked_at?.slice(0, 10);
+    if (!click.clicked_at) return;
+    const d = new Date(click.clicked_at);
+    const dateStr = format(d, "yyyy-MM-dd");
     const day = days.find((d) => d.dateStr === dateStr);
     if (day) day.count++;
   });
@@ -47,10 +69,7 @@ function processCountryData(clicks: any[]) {
   const counts: Record<string, { value: number; code: string; name: string }> = {};
   clicks
     .filter((c) => {
-      // Human-only and UNIQUE clicks only
-      if (c.is_bot === true) return false;
-      if (c.is_filtered === true) return false;
-      if (c.is_unique !== true) return false;
+      // Data is already exclusively unique human clicks
       return true;
     })
     .forEach((c) => {
@@ -75,7 +94,6 @@ function processCountryData(clicks: any[]) {
 function processHeatmapData(clicks: any[]) {
   const counts: Record<string, number> = {};
   clicks
-    .filter((c) => c.is_bot !== true && c.is_filtered !== true && c.is_unique === true)
     .forEach((c) => {
       const code = (c.country_code || "").toUpperCase();
       if (code && code !== "XX" && code !== "UN" && code.length === 2) {
@@ -90,11 +108,11 @@ function processGrouped(clicks: any[], field: string) {
   const botIdentifiers = ["facebook scraper", "googlebot", "bingbot", "ahrefsbot", "twitterbot", "bot", "crawler", "spider"];
   
   clicks.forEach((c) => {
-    const val = (c[field] as string) || "Other";
+    let val = (c[field] as string) || "Other";
+    val = val.trim() === "" ? "Other" : val;
     // Filter out bots and non-unique from grouped data
     const lowVal = val.toLowerCase();
     if (botIdentifiers.some(bot => lowVal.includes(bot))) return;
-    if (c.is_unique !== true) return;
     
     counts[val] = (counts[val] || 0) + 1;
   });
@@ -177,7 +195,7 @@ export default function AnalyticsClient({
     all: "all time",
   }[currentRange || "30d"] || "last 30 days";
 
-  const clicksByDay = processClicksByDay(clicks);
+  const clicksByDay = processClicksByDay(clicks, currentRange);
   const clicksByMonth = processClicksByMonth(clicks);
   
   // Use server-provided geoStats if available, otherwise fallback to processing the clicks array (for local filtering/re-repair)
@@ -194,20 +212,41 @@ export default function AnalyticsClient({
   const byBrowser = processGrouped(clicks, "browser");
   const byOs = processGrouped(clicks, "os");
 
-  if (!hasMounted) return null;
-
-  const totalClicksCount = stats ? Number(stats.total_clicks) : clicks.filter((c) => c.is_bot !== true && c.is_filtered !== true && c.is_unique === true).length;
+  const totalClicksCount = clicks.length;
   
   const knownCountries = byCountry.length;
-  const activeLinks = links.filter((l) => l.status === "active").length;
 
-  const topLinks = [...links]
-    .sort((a, b) => (b.click_count || 0) - (a.click_count || 0))
-    .slice(0, 5);
+  // Calculate stats from clicks for the current period
+  const { topLinks, activeLinksCount } = React.useMemo(() => {
+    const linkStats: Record<string, number> = {};
+    clicks.forEach(c => {
+      if (c.link_id) {
+        linkStats[c.link_id] = (linkStats[c.link_id] || 0) + 1;
+      }
+    });
+
+    const sortedLinks = links
+      .map(l => ({
+        ...l,
+        period_clicks: linkStats[l.id] || 0
+      }))
+      .filter(l => l.period_clicks > 0)
+      .sort((a, b) => b.period_clicks - a.period_clicks);
+
+    return {
+      topLinks: sortedLinks.slice(0, 5),
+      activeLinksCount: sortedLinks.length
+    };
+  }, [links, clicks]);
+
+  const activeLinks = activeLinksCount;
 
   const memberRows = isAdmin
     ? (members || []).map((m: any) => {
-        // Members already has stats from get_members_with_stats_v3
+        // Calculate clicks for this member from the current period's data
+        const memberLinkIds = links.filter(l => l.user_id === m.id).map(l => l.id);
+        const periodClicks = clicks.filter(c => memberLinkIds.includes(c.link_id)).length;
+        
         return {
           id: m.id,
           name: m.display_name || m.full_name || m.email || "Member",
@@ -215,10 +254,12 @@ export default function AnalyticsClient({
           status: m.status || "pending",
           links: m.link_count || 0,
           totalClicks: m.total_clicks || 0,
-          realClicks: m.real_clicks || 0,
+          periodClicks: periodClicks,
         };
       })
     : [];
+
+  if (!hasMounted) return null;
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">
@@ -248,7 +289,7 @@ export default function AnalyticsClient({
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Clicks", value: totalClicksCount.toLocaleString(), color: "text-primary" },
+          { label: "Real Clicks", value: totalClicksCount.toLocaleString(), color: "text-primary" },
           { label: "Countries", value: knownCountries, color: "text-cyan-400" },
           { label: "Active Links", value: activeLinks, color: "text-amber-400" },
           { label: "Earnings", value: `$${stats?.total_earnings || 0}`, color: "text-emerald-400" },
@@ -266,7 +307,7 @@ export default function AnalyticsClient({
         <div className="flex items-center gap-2 mb-4">
           <BarChart2 className="w-4 h-4 text-primary" />
           <h3 className="font-semibold text-sm">Clicks Over Time</h3>
-          <span className="ml-auto text-xs text-muted-foreground">Last 30 days</span>
+          <span className="ml-auto text-xs text-muted-foreground capitalize">{rangeLabel}</span>
         </div>
         <ResponsiveContainer width="100%" height={220}>
           <AreaChart data={clicksByDay} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
@@ -400,7 +441,7 @@ export default function AnalyticsClient({
                   </div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground">
                     <BarChart2 className="w-3 h-3" />
-                    {(link.click_count || 0).toLocaleString()}
+                    {(link.period_clicks || 0).toLocaleString()}
                   </div>
                 </Link>
               ))}
@@ -428,7 +469,7 @@ export default function AnalyticsClient({
                 </thead>
                 <tbody>
                   {memberRows
-                    .sort((a: any, b: any) => b.totalClicks - a.totalClicks)
+                    .sort((a: any, b: any) => b.periodClicks - a.periodClicks)
                     .map((row: any) => (
                       <tr key={row.id} className="border-b border-border/30 last:border-0 hover:bg-muted/20 transition-colors">
                         <td className="py-3 text-sm font-medium">{row.name}</td>
@@ -439,7 +480,7 @@ export default function AnalyticsClient({
                           </span>
                         </td>
                         <td className="py-3 text-sm text-right font-mono">{row.links}</td>
-                        <td className="py-3 text-sm text-right font-mono font-bold text-primary">{row.totalClicks.toLocaleString()}</td>
+                        <td className="py-3 text-sm text-right font-mono font-bold text-primary">{row.periodClicks.toLocaleString()}</td>
                       </tr>
                     ))}
                 </tbody>

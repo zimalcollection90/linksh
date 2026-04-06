@@ -112,8 +112,8 @@ export default function MemberLeaderboard({ members }: MemberLeaderboardProps) {
                         >
                           {member.status || "active"}
                         </Badge>
-                        <Link href={`/dashboard/members/${member.id}`} className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary">
-                          <ExternalLink className="w-3 h-3" />
+                        <Link href={`/dashboard/members/${member.id}`} className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-primary">
+                          <ExternalLink className="w-3.5 h-3.5" />
                         </Link>
                       </div>
                     </div>

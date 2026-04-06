@@ -18,8 +18,8 @@ export default async function AnalyticsPage(props: { searchParams: Promise<{ ran
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
   const isOwnView = view === "own";
 
-  const range = searchParams.range || "30d";
-  let days: number | null = 30;
+  const range = searchParams.range || "today";
+  let days: number | null = 1;
   if (range === "today") days = 1;
   else if (range === "7d") days = 7;
   else if (range === "30d") days = 30;
@@ -65,26 +65,30 @@ export default async function AnalyticsPage(props: { searchParams: Promise<{ ran
   });
 
   // Keep direct table query for the detailed clicks list (last 1000)
-  const clicksQuery = (isAdmin && !isOwnView)
+  let clicksQuery = (isAdmin && !isOwnView)
     ? supabase
         .from("click_events")
-        .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_bot, is_filtered, is_unique")
-        .eq("is_bot", false)
-        .eq("is_filtered", false)
-        .eq("is_unique", true)
+        .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_unique")
         .order("clicked_at", { ascending: false })
         .limit(1000)
     : linkIds.length > 0
     ? supabase
         .from("click_events")
-        .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_bot, is_filtered, is_unique")
+        .select("id, link_id, country, country_code, device_type, browser, os, clicked_at, is_unique")
         .in("link_id", linkIds)
-        .eq("is_bot", false)
-        .eq("is_filtered", false)
-        .eq("is_unique", true)
         .order("clicked_at", { ascending: false })
         .limit(1000)
     : null;
+
+  if (clicksQuery && days !== null) {
+    const fromDate = new Date();
+    if (range === "today") {
+      fromDate.setHours(0, 0, 0, 0);
+    } else {
+      fromDate.setDate(fromDate.getDate() - days);
+    }
+    clicksQuery = clicksQuery.gte("clicked_at", fromDate.toISOString());
+  }
 
   const { data: clicks } = clicksQuery ? await clicksQuery : { data: [] };
 

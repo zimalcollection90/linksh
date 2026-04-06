@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
@@ -66,9 +67,7 @@ const memberItems: NavItem[] = [
   { href: "/dashboard/settings", icon: Settings, label: "Settings" },
 ];
 
-
-
-export default function AppSidebar() {
+export default function AppSidebar({ isMobile }: { isMobile?: boolean }) {
   const [collapsed, setCollapsed] = useState(false);
   const [user, setUser] = useState<any>(null);
   const [profile, setProfile] = useState<any>(null);
@@ -86,7 +85,6 @@ export default function AppSidebar() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         setUser(user);
-        // Fetch profile directly from users table — no company dependency
         const { data } = await supabase
           .from("users")
           .select("*")
@@ -111,25 +109,40 @@ export default function AppSidebar() {
 
   return (
     <TooltipProvider>
-      <aside
+      <motion.aside
+        initial={false}
+        animate={{ width: isMobile ? "100%" : collapsed ? 64 : 240 }}
+        transition={{ type: "spring", stiffness: 300, damping: 30 }}
         className={cn(
-          "flex flex-col h-screen sticky top-0 bg-sidebar border-r border-sidebar-border transition-all duration-300 ease-in-out z-40",
-          collapsed ? "w-16" : "w-60"
+          "flex flex-col h-screen z-40 bg-sidebar border-sidebar-border relative",
+          isMobile ? "w-full border-r-0" : "hidden lg:flex sticky top-0 border-r"
         )}
       >
         {/* Logo */}
         <div className={cn(
           "flex items-center gap-3 px-4 py-5 border-b border-sidebar-border",
-          collapsed && "justify-center px-2"
+          collapsed && "justify-center px-0"
         )}>
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex-shrink-0">
+          <motion.div 
+            whileHover={{ scale: 1.1, rotate: 5 }}
+            whileTap={{ scale: 0.95 }}
+            className="flex items-center justify-center w-8 h-8 rounded-lg bg-primary/20 border border-primary/40 flex-shrink-0"
+          >
             <Zap className="w-4 h-4 text-primary" />
-          </div>
-          {!collapsed && (
-            <span className="text-sidebar-foreground font-bold text-lg tracking-tight" style={{ fontFamily: 'Syne, sans-serif' }}>
-              LinkFlux
-            </span>
-          )}
+          </motion.div>
+          <AnimatePresence mode="wait">
+            {!collapsed && (
+              <motion.span 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -10 }}
+                className="text-sidebar-foreground font-bold text-lg tracking-tight whitespace-nowrap" 
+                style={{ fontFamily: 'Syne, sans-serif' }}
+              >
+                LinkFlux
+              </motion.span>
+            )}
+          </AnimatePresence>
         </div>
 
         {/* Navigation */}
@@ -137,9 +150,13 @@ export default function AppSidebar() {
           {sections.map((section, sIdx) => (
             <div key={sIdx} className="space-y-1">
               {!collapsed && section.label && (
-                <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/40 mb-2">
+                <motion.p 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="px-3 text-[10px] font-bold uppercase tracking-wider text-sidebar-foreground/40 mb-2"
+                >
                   {section.label}
-                </p>
+                </motion.p>
               )}
               {section.items.map((item) => {
                 const Icon = item.icon;
@@ -152,21 +169,52 @@ export default function AppSidebar() {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 group relative",
+                      "flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group relative",
                       collapsed && "justify-center px-2",
                       isActive
-                        ? "bg-primary/15 text-primary border-l-2 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]"
-                        : "text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground"
+                        ? "text-primary font-semibold"
+                        : "text-sidebar-foreground/70 hover:text-sidebar-foreground"
                     )}
                   >
-                    <Icon className={cn("w-5 h-5 flex-shrink-0 transition-transform group-hover:scale-110", isActive && "text-primary")} />
-                    {!collapsed && (
-                      <span className="text-sm font-medium">{item.label}</span>
+                    {/* Sliding Background Pill */}
+                    {isActive && (
+                      <motion.div
+                        layoutId="sidebar-active-pill"
+                        className="absolute inset-0 bg-primary/10 rounded-lg -z-10 border-l-2 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]"
+                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                      />
                     )}
+                    
+                    <motion.div
+                      whileHover={{ scale: 1.1 }}
+                      animate={isActive ? { scale: 1.1, filter: "drop-shadow(0 0 4px rgba(var(--primary),0.5))" } : { scale: 1, filter: "none" }}
+                    >
+                      <Icon className={cn("w-5 h-5 flex-shrink-0 transition-colors", isActive ? "text-primary" : "group-hover:text-primary")} />
+                    </motion.div>
+
+                    {!collapsed && (
+                      <motion.span 
+                        initial={{ opacity: 0, x: -5 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="text-sm overflow-hidden whitespace-nowrap"
+                      >
+                        {item.label}
+                      </motion.span>
+                    )}
+
                     {!collapsed && item.badge && (
                       <Badge className="ml-auto text-xs py-0 px-1.5 bg-primary/20 text-primary border-0">
                         {item.badge}
                       </Badge>
+                    )}
+
+                    {/* Active Dot for "Selects" functionality */}
+                    {isActive && collapsed && (
+                       <motion.div 
+                        layoutId="active-dot"
+                        className="absolute right-1.5 w-1 h-1 rounded-full bg-primary"
+                        transition={{ type: "spring", stiffness: 350, damping: 30 }}
+                       />
                     )}
                   </Link>
                 );
@@ -199,14 +247,16 @@ export default function AppSidebar() {
                   collapsed && "justify-center px-2"
                 )}
               >
-                {!mounted ? (
-                  <Moon className="w-4 h-4 flex-shrink-0" />
-                ) : theme === "dark" ? (
-                  <Sun className="w-4 h-4 flex-shrink-0" />
-                ) : (
-                  <Moon className="w-4 h-4 flex-shrink-0" />
-                )}
-                {!collapsed && <span className="text-sm">Toggle Theme</span>}
+                <div className="w-5 h-5 flex items-center justify-center">
+                  {!mounted ? (
+                    <Moon className="w-4 h-4 flex-shrink-0" />
+                  ) : theme === "dark" ? (
+                    <Sun className="w-4 h-4 flex-shrink-0" />
+                  ) : (
+                    <Moon className="w-4 h-4 flex-shrink-0" />
+                  )}
+                </div>
+                {!collapsed && <span className="text-sm whitespace-nowrap">Toggle Theme</span>}
               </button>
             </TooltipTrigger>
             {collapsed && (
@@ -228,7 +278,7 @@ export default function AppSidebar() {
                   )}
                 >
                   <LogOut className="w-4 h-4 flex-shrink-0" />
-                  {!collapsed && <span className="text-sm">Sign Out</span>}
+                  {!collapsed && <span className="text-sm whitespace-nowrap">Sign Out</span>}
                 </button>
               </form>
             </TooltipTrigger>
@@ -241,35 +291,45 @@ export default function AppSidebar() {
 
           {/* User */}
           <div className={cn(
-            "flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/50",
-            collapsed && "justify-center px-2"
+            "flex items-center gap-2 px-2 py-2 rounded-lg bg-sidebar-accent/50 overflow-hidden",
+            collapsed && "justify-center px-0"
           )}>
-            <Avatar className="w-7 h-7 flex-shrink-0">
+            <Avatar className="w-7 h-7 flex-shrink-0 ring-1 ring-primary/20">
               <AvatarImage src={profile?.avatar_url} />
               <AvatarFallback className="bg-primary/20 text-primary text-xs font-bold">{initials}</AvatarFallback>
             </Avatar>
             {!collapsed && (
-              <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-sidebar-foreground truncate">{displayName}</p>
+              <motion.div 
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="flex-1 min-w-0"
+              >
+                <p className="text-[11px] font-medium text-sidebar-foreground truncate leading-none mb-1">{displayName}</p>
                 <Badge variant="outline" className={cn(
-                  "text-[10px] py-0 px-1.5 border-0",
+                  "text-[9px] py-0 px-1 border-0 h-4",
                   isAdmin ? "bg-primary/20 text-primary" : "bg-accent/20 text-accent"
                 )}>
                   {isAdmin ? "Admin" : "Member"}
                 </Badge>
-              </div>
+              </motion.div>
             )}
           </div>
         </div>
 
-        {/* Collapse toggle */}
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-sidebar border border-sidebar-border flex items-center justify-center text-sidebar-foreground/60 hover:text-primary hover:border-primary transition-all duration-200 z-50"
-        >
-          {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-        </button>
-      </aside>
+        {/* Collapse toggle - only show on desktop */}
+        {!isMobile && (
+          <button
+            onClick={() => setCollapsed(!collapsed)}
+            className="absolute -right-3 top-20 w-6 h-6 rounded-full bg-sidebar border border-sidebar-border flex items-center justify-center text-sidebar-foreground/60 hover:text-primary hover:border-primary transition-all duration-200 z-50 group shadow-sm hover:shadow-md"
+          >
+            {collapsed ? (
+              <ChevronRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
+            ) : (
+              <ChevronLeft className="w-3 h-3 transition-transform group-hover:-translate-x-0.5" />
+            )}
+          </button>
+        )}
+      </motion.aside>
     </TooltipProvider>
   );
 }

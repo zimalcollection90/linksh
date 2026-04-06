@@ -42,6 +42,11 @@ export default function MembersClient({ members: initialMembers }: { members: an
   const [members, setMembers] = useState(initialMembers);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [mounted, setMounted] = useState(false);
+  
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
   const [selectedIds, setSelectedIds] = useState<Record<string, boolean>>({});
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; memberId: string; action: string; name: string } | null>(null);
   const [processing, setProcessing] = useState<string | null>(null);
@@ -325,9 +330,7 @@ export default function MembersClient({ members: initialMembers }: { members: an
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden md:table-cell">
                   <span className="flex items-center gap-1"><TrendingUp className="w-3 h-3" /> Clicks</span>
                 </th>
-                <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden lg:table-cell">
-                  <span className="flex items-center gap-1"><Bot className="w-3 h-3" /> Real / Bot</span>
-                </th>
+
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden lg:table-cell">Joined</th>
                 <th className="text-left text-xs font-medium text-muted-foreground px-4 py-3 hidden xl:table-cell">
                   <span className="flex items-center gap-1"><Activity className="w-3 h-3" /> Last Active</span>
@@ -430,47 +433,27 @@ export default function MembersClient({ members: initialMembers }: { members: an
 
                     {/* Clicks */}
                     <td className="px-4 py-3 hidden md:table-cell">
-                      <div>
-                        <span className="text-sm font-medium">{(member.totalClicks || 0).toLocaleString()}</span>
-                        {member.realClicks > 0 && (
-                          <p className="text-[10px] text-emerald-400 font-medium">
-                            {member.realClicks.toLocaleString()} real
-                          </p>
-                        )}
-                      </div>
+                      <span className="text-sm font-medium">{(member.realClicks !== undefined ? member.realClicks : member.totalClicks || 0).toLocaleString()}</span>
                     </td>
 
-                    {/* Real / Bot */}
-                    <td className="px-4 py-3 hidden lg:table-cell">
-                      <div className="flex items-center gap-2 text-xs">
-                        <span className="text-emerald-400 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3" />
-                          {(member.realClicks || 0).toLocaleString()}
-                        </span>
-                        <span className="text-muted-foreground/40">·</span>
-                        <span className="text-red-400 flex items-center gap-1">
-                          <Bot className="w-3 h-3" />
-                          {(member.botExcluded || 0).toLocaleString()}
-                        </span>
-                      </div>
-                    </td>
+
 
                     {/* Joined */}
                     <td className="px-4 py-3 hidden lg:table-cell">
-                      <span className="text-xs text-muted-foreground">
-                        {member.created_at && !isNaN(new Date(member.created_at).getTime())
-                          ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true })
-                          : "—"}
-                      </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {mounted && member.created_at && !isNaN(new Date(member.created_at).getTime())
+                            ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true })
+                            : "—"}
+                        </span>
                     </td>
 
                     {/* Last Active */}
                     <td className="px-4 py-3 hidden xl:table-cell">
-                      <span className="text-xs text-muted-foreground">
-                        {member.last_active_at && !isNaN(new Date(member.last_active_at).getTime())
-                          ? formatDistanceToNow(new Date(member.last_active_at), { addSuffix: true })
-                          : "Never"}
-                      </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {mounted && member.last_active_at && !isNaN(new Date(member.last_active_at).getTime())
+                            ? formatDistanceToNow(new Date(member.last_active_at), { addSuffix: true })
+                            : "—"}
+                        </span>
                     </td>
 
                     {/* Actions */}

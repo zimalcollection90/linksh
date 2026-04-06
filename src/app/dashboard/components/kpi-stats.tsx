@@ -128,8 +128,8 @@ export default function KpiStats({ stats, isAdmin = false }: KpiStatsProps) {
       color: "purple" as const,
     },
     {
-      title: "Total Clicks",
-      value: stats.totalClicks,
+      title: "Real Clicks",
+      value: hasRealClickData ? stats.realClicks! : stats.totalClicks,
       icon: MousePointerClick,
       color: "teal" as const,
     },

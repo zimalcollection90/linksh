@@ -37,7 +37,12 @@ const countryFlag = (code?: string) => {
 
 export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
   const [clicks, setClicks] = useState<ClickEvent[]>(initialClicks);
+  const [mounted, setMounted] = useState(false);
   const supabase = createClient();
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const channel = supabase
@@ -122,7 +127,7 @@ export default function ActivityFeed({ initialClicks }: ActivityFeedProps) {
                     {click.links?.title || `/${click.links?.short_code || "link"}`}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    {click.country && click.country !== "Unknown" ? click.country : (click.country_code && click.country_code !== "XX" ? click.country_code : "Unknown Origin")} · {click.clicked_at && !isNaN(new Date(click.clicked_at).getTime()) ? formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true }) : "just now"}
+                    {click.country && click.country !== "Unknown" ? click.country : (click.country_code && click.country_code !== "XX" ? click.country_code : "Unknown Origin")} · {mounted && click.clicked_at && !isNaN(new Date(click.clicked_at).getTime()) ? formatDistanceToNow(new Date(click.clicked_at), { addSuffix: true }) : "just now"}
                   </p>
                 </div>
                 {deviceIcon(click.device_type)}

@@ -3,7 +3,6 @@ import { SubmitButton } from "@/components/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { SmtpMessage } from "../smtp-message";
 import { forgotPasswordAction } from "@/app/actions";
 import Navbar from "@/components/navbar";
 import { UrlProvider } from "@/components/url-provider";
@@ -12,14 +11,6 @@ export default async function ForgotPassword(props: {
   searchParams: Promise<Message>;
 }) {
   const searchParams = await props.searchParams;
-
-  if ("message" in searchParams) {
-    return (
-      <div className="flex h-screen w-full flex-1 items-center justify-center p-4 sm:max-w-md">
-        <FormMessage message={searchParams} />
-      </div>
-    );
-  }
 
   return (
     <>
@@ -40,6 +31,8 @@ export default async function ForgotPassword(props: {
                   </Link>
                 </p>
               </div>
+
+              <FormMessage message={searchParams} />
 
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -64,12 +57,9 @@ export default async function ForgotPassword(props: {
               >
                 Reset Password
               </SubmitButton>
-
-              <FormMessage message={searchParams} />
             </form>
           </UrlProvider>
         </div>
-        <SmtpMessage />
       </div>
     </>
   );

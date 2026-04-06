@@ -3,14 +3,23 @@
 import React from "react";
 import KpiStats from "./kpi-stats";
 import RecentLinks from "./recent-links";
-import TrendCharts from "./trend-charts";
 import TopCountries from "./top-countries";
-import WorldHeatmap from "./world-heatmap";
 import RangeSelector from "./range-selector";
+import dynamic from "next/dynamic";
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Progress } from "@/components/ui/progress";
 import { Target, Sparkles } from "lucide-react";
+
+const TrendCharts = dynamic(() => import("./trend-charts"), { 
+  ssr: false, 
+  loading: () => <div className="h-[200px] w-full bg-muted/20 animate-pulse rounded-xl" /> 
+});
+
+const WorldHeatmap = dynamic(() => import("./world-heatmap"), { 
+  ssr: false, 
+  loading: () => <div className="h-[300px] sm:h-[400px] w-full bg-muted/20 animate-pulse rounded-xl" /> 
+});
 
 interface MemberDashboardProps {
   stats: {
@@ -42,7 +51,7 @@ export default function MemberDashboard({
   monthlyGoal = 1000,
   monthlyClicks = 0,
   topCountries = [],
-  currentRange = "30d",
+  currentRange = "today",
   heatmapData = [],
 }: MemberDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "there";
@@ -69,20 +78,20 @@ export default function MemberDashboard({
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.4 }}
-        className="flex flex-col md:flex-row md:items-center justify-between gap-6"
+        className="flex flex-col lg:flex-row lg:items-center justify-between gap-6"
       >
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h1 className="text-3xl font-black text-foreground tracking-tight" style={{ fontFamily: "Syne, sans-serif" }}>
+          <div className="flex items-center gap-2 mb-1 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-black text-foreground tracking-tight leading-tight" style={{ fontFamily: "Syne, sans-serif" }}>
               Welcome back, {displayName}
             </h1>
-            <Sparkles className="w-6 h-6 text-primary animate-pulse" />
+            <Sparkles className="w-5 h-5 sm:w-6 sm:h-6 text-primary animate-pulse" />
           </div>
-          <p className="text-muted-foreground text-sm font-medium">
+          <p className="text-muted-foreground text-xs sm:text-sm font-medium">
             You're performing great {rangeLabel}. Here's your overview.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 self-start lg:self-end">
           <RangeSelector />
         </div>
       </motion.div>
@@ -91,10 +100,10 @@ export default function MemberDashboard({
       <KpiStats stats={stats} isAdmin={false} />
 
       {/* Main Grid */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Charts & Map */}
-        <div className="xl:col-span-2 space-y-6">
-          <TrendCharts data={trendData} />
+        <div className="lg:col-span-2 space-y-6">
+          <TrendCharts data={trendData} label={rangeLabel} />
           <WorldHeatmap data={mapData} />
         </div>
 
@@ -102,8 +111,8 @@ export default function MemberDashboard({
         <div className="space-y-6">
           {/* Goal Progress */}
           <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
             transition={{ delay: 0.2 }}
             className="rounded-xl border border-primary/20 bg-primary/5 p-6 relative overflow-hidden group"
           >
@@ -121,13 +130,13 @@ export default function MemberDashboard({
 
             <div className="space-y-4">
               <div className="flex items-end justify-between">
-                <p className="text-2xl font-black text-foreground tabular-nums">
+                <p className="text-xl sm:text-2xl font-black text-foreground tabular-nums">
                   {monthlyClicks.toLocaleString()}
-                  <span className="text-sm font-normal text-muted-foreground ml-1">/ {goalClicks.toLocaleString()}</span>
+                  <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">/ {goalClicks.toLocaleString()}</span>
                 </p>
               </div>
               
-              <div className="relative h-3 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
+              <div className="relative h-2.5 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${progress}%` }}
@@ -138,7 +147,7 @@ export default function MemberDashboard({
                 </motion.div>
               </div>
 
-              <p className="text-[11px] text-muted-foreground font-medium italic">
+              <p className="text-[10px] sm:text-[11px] text-muted-foreground font-medium italic">
                 {progress >= 100
                   ? "🔥 Incredible! You've smashed your monthly target!"
                   : `You need ${(goalClicks - monthlyClicks).toLocaleString()} more clicks to hit your goal.`}

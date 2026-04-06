@@ -107,12 +107,9 @@ export type Database = {
           filter_reason: string | null
           id: string
           ip_address: string | null
-          is_bot: boolean | null
-          is_filtered: boolean | null
           is_unique: boolean | null
           link_id: string
           os: string | null
-          quality_score: number | null
           referrer: string | null
           user_agent: string | null
           user_id: string | null
@@ -127,12 +124,9 @@ export type Database = {
           filter_reason?: string | null
           id?: string
           ip_address?: string | null
-          is_bot?: boolean | null
-          is_filtered?: boolean | null
           is_unique?: boolean | null
           link_id: string
           os?: string | null
-          quality_score?: number | null
           referrer?: string | null
           user_agent?: string | null
           user_id?: string | null
@@ -147,12 +141,9 @@ export type Database = {
           filter_reason?: string | null
           id?: string
           ip_address?: string | null
-          is_bot?: boolean | null
-          is_filtered?: boolean | null
           is_unique?: boolean | null
           link_id?: string
           os?: string | null
-          quality_score?: number | null
           referrer?: string | null
           user_agent?: string | null
           user_id?: string | null

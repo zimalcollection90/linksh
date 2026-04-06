@@ -3,12 +3,22 @@
 import React from "react";
 import KpiStats from "./kpi-stats";
 import ActivityFeed from "./activity-feed";
-import TrendCharts from "./trend-charts";
+import dynamic from "next/dynamic";
 import MemberLeaderboard from "./member-leaderboard";
 import RecentLinks from "./recent-links";
-import WorldHeatmap from "./world-heatmap";
 import TopCountries from "./top-countries";
 import RangeSelector from "./range-selector";
+
+const TrendCharts = dynamic(() => import("./trend-charts"), { 
+  ssr: false, 
+  loading: () => <div className="h-[200px] w-full bg-muted/20 animate-pulse rounded-xl" /> 
+});
+
+const WorldHeatmap = dynamic(() => import("./world-heatmap"), { 
+  ssr: false, 
+  loading: () => <div className="h-[300px] sm:h-[400px] w-full bg-muted/20 animate-pulse rounded-xl" /> 
+});
+
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +57,7 @@ export default function AdminDashboard({
   trendData,
   monthlyGoal = 10000,
   topCountries = [],
-  currentRange = "30d",
+  currentRange = "today",
 }: AdminDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "Admin";
 
@@ -75,17 +85,17 @@ export default function AdminDashboard({
             <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-lg shadow-primary/20">
               <Activity className="w-6 h-6 text-white" />
             </div>
-            <h1 className="text-3xl md:text-4xl font-black text-foreground tracking-tight" style={{ fontFamily: "Syne, sans-serif" }}>
-              LinkFlux <span className="text-primary italic">Analytics</span>
-            </h1>
-          </div>
-          <p className="text-muted-foreground text-sm font-medium ml-1">
-            Welcome back, <span className="text-foreground font-bold">{displayName}</span>. Here's your platform performance {rangeLabel}.
-          </p>
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-foreground tracking-tight leading-tight" style={{ fontFamily: "Syne, sans-serif" }}>
+            LinkFlux <span className="text-primary italic">Analytics</span>
+          </h1>
         </div>
-        <div className="flex items-center gap-4 bg-card border border-border/50 p-1.5 rounded-2xl shadow-sm">
-          <RangeSelector />
-        </div>
+        <p className="text-muted-foreground text-xs sm:text-sm font-medium ml-1">
+          Welcome back, <span className="text-foreground font-bold">{displayName}</span>. Here's your platform performance {rangeLabel}.
+        </p>
+      </div>
+      <div className="flex items-center gap-4 bg-card border border-border/50 p-1 rounded-xl sm:rounded-2xl shadow-sm self-start lg:self-end">
+        <RangeSelector />
+      </div>
       </motion.div>
 
       {/* KPI Section */}
@@ -144,9 +154,9 @@ export default function AdminDashboard({
 
       {/* Main Insights Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Trend Info */}
+        {/* Left Column: Charts & Map */}
         <div className="lg:col-span-8 space-y-6">
-          <TrendCharts data={trendData} />
+          <TrendCharts data={trendData} label={rangeLabel} />
           <WorldHeatmap data={heatmapData} />
         </div>
 
@@ -157,7 +167,7 @@ export default function AdminDashboard({
       </div>
 
       {/* Tables Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-4">
         <TopCountries data={topCountries} title="Geographic Click Performance" />
         <MemberLeaderboard members={topMembers} />
       </div>

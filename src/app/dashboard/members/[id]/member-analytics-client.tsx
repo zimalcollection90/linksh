@@ -61,7 +61,9 @@ export default function MemberAnalyticsClient({
   earnings,
   totalEarnings,
 }: MemberAnalyticsClientProps) {
-  const [hasMounted, setHasMounted] = useState(false);
+  const [isRepairing, setIsRepairing] = React.useState(false);
+  const [hasMounted, setHasMounted] = React.useState(false);
+
   React.useEffect(() => {
     setHasMounted(true);
   }, []);
@@ -88,10 +90,8 @@ export default function MemberAnalyticsClient({
   // Format daily clicks for chart
   const chartData = dailyClicks.map(d => ({
     date: d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "MMM d") : (d.day || "Other"),
-    Total: d.total,
     Real: d.real,
     Unique: d.unique,
-    Bots: d.bots,
   }));
 
   const tabs = [
@@ -129,20 +129,18 @@ export default function MemberAnalyticsClient({
         </div>
         <div className="text-right hidden sm:block">
           <p className="text-xs text-muted-foreground">Joined</p>
-          <p className="text-sm font-medium">
-            {member.created_at && !isNaN(new Date(member.created_at).getTime()) ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true }) : "—"}
+          <p className="text-sm font-medium text-foreground">
+            {hasMounted && member.created_at && !isNaN(new Date(member.created_at).getTime()) ? formatDistanceToNow(new Date(member.created_at), { addSuffix: true }) : "—"}
           </p>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3">
         {[
-          { label: "Total Clicks", value: clickStats.totalClicks.toLocaleString(), icon: MousePointerClick, color: "text-muted-foreground", bg: "bg-muted/50" },
-          { label: "Real Clicks", value: clickStats.realClicks.toLocaleString(), icon: ShieldCheck, color: "text-green-400", bg: "bg-green-500/10" },
+          { label: "Real Clicks", value: clickStats.realClicks.toLocaleString(), icon: MousePointerClick, color: "text-green-400", bg: "bg-green-500/10" },
           { label: "Unique Users", value: clickStats.uniqueUsers.toLocaleString(), icon: UserCheck, color: "text-cyan-400", bg: "bg-cyan-500/10" },
-          { label: "Bots Excluded", value: clickStats.botExcluded.toLocaleString(), icon: Bot, color: "text-red-400", bg: "bg-red-500/10" },
-          { label: "Filtered Out", value: clickStats.filteredClicks.toLocaleString(), icon: FilterX, color: "text-amber-400", bg: "bg-amber-500/10" },
+          { label: "Bot Clicks Filtered", value: clickStats.botExcluded.toLocaleString(), icon: Bot, color: "text-amber-400", bg: "bg-amber-500/10" },
           { label: "Links Created", value: links.length.toLocaleString(), icon: Link2, color: "text-purple-400", bg: "bg-purple-500/10" },
         ].map((stat, i) => (
           <motion.div
@@ -161,28 +159,8 @@ export default function MemberAnalyticsClient({
         ))}
       </div>
 
-      {/* Quality score + earnings bar */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div className="rounded-xl border border-border bg-card p-4">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              <span className="text-sm font-medium">Traffic Quality Score</span>
-            </div>
-            <span className={cn("text-xl font-bold", qualityScore >= 70 ? "text-green-400" : qualityScore >= 40 ? "text-amber-400" : "text-red-400")}>
-              {qualityScore}%
-            </span>
-          </div>
-          <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className={cn("h-full rounded-full transition-all duration-700", qualityScore >= 70 ? "bg-green-400" : qualityScore >= 40 ? "bg-amber-400" : "bg-red-400")}
-              style={{ width: `${qualityScore}%` }}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            {clickStats.realClicks} real clicks out of {clickStats.totalClicks} total
-          </p>
-        </div>
+      {/* Earnings bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-1 max-w-md gap-4">
         <div className="rounded-xl border border-border bg-card p-4">
           <div className="flex items-center gap-2 mb-2">
             <DollarSign className="w-4 h-4 text-amber-400" />
@@ -243,9 +221,8 @@ export default function MemberAnalyticsClient({
                   <YAxis tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                   <Tooltip contentStyle={{ background: "hsl(var(--card))", border: "1px solid hsl(var(--border))", borderRadius: "8px", fontSize: "12px" }} />
                   <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: "11px", paddingTop: "8px" }} />
-                  <Area type="monotone" dataKey="Total" stroke="#7C3AED" strokeWidth={1.5} fill="url(#totalGrad)" dot={false} strokeDasharray="4 2" />
-                  <Area type="monotone" dataKey="Real" stroke="#22D3EE" strokeWidth={2} fill="url(#realGrad)" dot={false} />
-                  <Area type="monotone" dataKey="Bots" stroke="#EF4444" strokeWidth={1} fill="none" dot={false} strokeDasharray="2 2" />
+                  <Area type="monotone" dataKey="Real" name="Real Clicks" stroke="#22D3EE" strokeWidth={2} fill="url(#realGrad)" dot={false} />
+                  <Area type="monotone" dataKey="Unique" name="Unique Clicks" stroke="#7C3AED" strokeWidth={1} fill="none" dot={false} strokeDasharray="4 2" />
                 </AreaChart>
               </ResponsiveContainer>
             )}
@@ -333,8 +310,8 @@ export default function MemberAnalyticsClient({
                         <span className="text-sm font-medium text-primary">{(link.click_count || 0).toLocaleString()}</span>
                       </td>
                       <td className="px-4 py-3 hidden md:table-cell">
-                        <span className="text-xs text-muted-foreground">
-                          {link.created_at && !isNaN(new Date(link.created_at).getTime()) ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "—"}
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {hasMounted && link.created_at && !isNaN(new Date(link.created_at).getTime()) ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true }) : "—"}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-right">
@@ -453,8 +430,8 @@ export default function MemberAnalyticsClient({
               return (
                 <div key={period} className="rounded-xl border border-border bg-card p-4">
                   <p className="text-xs text-muted-foreground capitalize mb-1">{period}</p>
-                  <p className="text-xl font-bold text-primary">{total.toLocaleString()}</p>
-                  <p className="text-xs text-muted-foreground">{real.toLocaleString()} real clicks</p>
+                  <p className="text-xl font-bold text-primary">{real.toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Unique clicks</p>
                 </div>
               );
             })}
@@ -468,10 +445,8 @@ export default function MemberAnalyticsClient({
                 <thead>
                   <tr className="border-b border-border">
                     <th className="text-left text-xs font-medium text-muted-foreground pb-2">Date</th>
-                    <th className="text-right text-xs font-medium text-muted-foreground pb-2">Total</th>
-                    <th className="text-right text-xs font-medium text-green-400 pb-2">Real</th>
-                    <th className="text-right text-xs font-medium text-cyan-400 pb-2">Unique</th>
-                    <th className="text-right text-xs font-medium text-red-400 pb-2">Bots</th>
+                    <th className="text-right text-xs font-medium text-green-400 pb-2">Real Clicks</th>
+                    <th className="text-right text-xs font-medium text-cyan-400 pb-2">Unique Views</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -485,10 +460,8 @@ export default function MemberAnalyticsClient({
                         <td className="py-2 text-xs text-muted-foreground">
                           {d.day && !isNaN(new Date(d.day).getTime()) ? format(new Date(d.day), "EEE, MMM d") : (d.day || "Other")}
                         </td>
-                        <td className="py-2 text-right text-xs">{d.total}</td>
                         <td className="py-2 text-right text-xs text-green-400">{d.real}</td>
                         <td className="py-2 text-right text-xs text-cyan-400">{d.unique}</td>
-                        <td className="py-2 text-right text-xs text-red-400">{d.bots}</td>
                       </tr>
                     ))
                   )}

@@ -40,14 +40,14 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
-export default function TrendCharts({ data }: { data?: TrendPoint[] }) {
+export default function TrendCharts({ data, label }: { data?: TrendPoint[]; label?: string }) {
   const chartData = data || generateTrendData();
   return (
     <div className="rounded-xl border border-border bg-card p-5">
       <div className="flex items-center gap-2 mb-4">
         <TrendingUp className="w-4 h-4 text-primary" />
         <h3 className="font-semibold text-sm">Click Trends</h3>
-        <span className="ml-auto text-xs text-muted-foreground">Last 14 days</span>
+        <span className="ml-auto text-xs text-muted-foreground capitalize">{label || "Last 14 days"}</span>
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <AreaChart data={chartData} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>

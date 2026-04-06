@@ -116,7 +116,7 @@ export default function RecentLinks({ links }: RecentLinksProps) {
                     <span className="text-[10px] text-muted-foreground/40 font-medium uppercase tracking-tighter">Clicks</span>
                   </div>
 
-                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all translate-x-2 group-hover:translate-x-0">
+                  <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-all sm:translate-x-2 sm:group-hover:translate-x-0">
                     <button
                       onClick={() => handleCopy(link.short_code, link.id)}
                       className="w-8 h-8 rounded-lg flex items-center justify-center bg-background border border-border/50 text-muted-foreground hover:text-primary hover:border-primary/20 transition-all"

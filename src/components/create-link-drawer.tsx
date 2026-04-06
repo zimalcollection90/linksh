@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Check, Download, RefreshCw, Loader2, ExternalLink } from "lucide-react";
+import { Copy, Check, Download, RefreshCw, Loader2, ExternalLink, Bookmark, X, ChevronRight, Globe } from "lucide-react";
 import { toast } from "sonner";
 import { createClient } from "../../supabase/client";
 
@@ -47,25 +47,95 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
   const [copied, setCopied] = useState(false);
   const [loading, setLoading] = useState(false);
   const [shortCode, setShortCode] = useState("");
+  const [savedUrls, setSavedUrls] = useState<{ id: string; url: string; title?: string }[]>([]);
+  const [isSavingUrl, setIsSavingUrl] = useState(false);
 
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   const shortUrl = shortCode ? `${baseUrl}/${shortCode}` : "";
 
   useEffect(() => {
-    if (open && !editLink) {
-      setShortCode(generateShortCode());
-    } else if (editLink) {
-      setDestinationUrl(editLink.destination_url || "");
-      setCustomAlias(editLink.short_code || "");
-      setShortCode(editLink.short_code || "");
-      setTitle(editLink.title || "");
-      setExpiresAt(editLink.expires_at ? editLink.expires_at.slice(0, 10) : "");
-      setIsPasswordProtected(editLink.is_password_protected || false);
-      setUtmSource(editLink.utm_source || "");
-      setUtmMedium(editLink.utm_medium || "");
-      setUtmCampaign(editLink.utm_campaign || "");
+    if (open) {
+      fetchSavedUrls();
+      if (!editLink) {
+        setShortCode(generateShortCode());
+      } else {
+        setDestinationUrl(editLink.destination_url || "");
+        setCustomAlias(editLink.short_code || "");
+        setShortCode(editLink.short_code || "");
+        setTitle(editLink.title || "");
+        setExpiresAt(editLink.expires_at ? editLink.expires_at.slice(0, 10) : "");
+        setIsPasswordProtected(editLink.is_password_protected || false);
+        setUtmSource(editLink.utm_source || "");
+        setUtmMedium(editLink.utm_medium || "");
+        setUtmCampaign(editLink.utm_campaign || "");
+      }
     }
   }, [open, editLink]);
+
+  const fetchSavedUrls = async () => {
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
+    const { data, error } = await supabase
+      .from("saved_urls")
+      .select("*")
+      .order("created_at", { ascending: false });
+
+    if (!error && data) {
+      setSavedUrls(data);
+    }
+  };
+
+  const handleSaveUrl = async () => {
+    if (!destinationUrl) {
+      toast.error("Please enter a URL first");
+      return;
+    }
+
+    try {
+      new URL(destinationUrl);
+    } catch {
+      toast.error("Invalid URL format");
+      return;
+    }
+
+    setIsSavingUrl(true);
+    const supabase = createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (!user) {
+      toast.error("You must be logged in");
+      setIsSavingUrl(false);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("saved_urls")
+      .upsert({ 
+        user_id: user.id, 
+        url: destinationUrl,
+        title: title || new URL(destinationUrl).hostname 
+      }, { onConflict: "user_id,url" });
+
+    setIsSavingUrl(false);
+
+    if (error) {
+      toast.error("Failed to save URL: " + error.message);
+    } else {
+      toast.success("URL saved for quick access!");
+      fetchSavedUrls();
+    }
+  };
+
+  const removeSavedUrl = async (id: string) => {
+    const supabase = createClient();
+    const { error } = await supabase.from("saved_urls").delete().eq("id", id);
+    if (!error) {
+      setSavedUrls(prev => prev.filter(u => u.id !== id));
+      toast.success("Saved URL removed");
+    }
+  };
 
   useEffect(() => {
     if (customAlias) {
@@ -233,19 +303,35 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
         </SheetHeader>
 
         <div className="space-y-6">
-          {/* Short URL Preview */}
-          {shortUrl && (
-            <div className="flex items-center gap-2 p-3 rounded-lg bg-primary/10 border border-primary/20">
-              <ExternalLink className="w-4 h-4 text-primary flex-shrink-0" />
-              <span className="text-sm text-primary font-mono flex-1 truncate">{shortUrl}</span>
-              <button
-                onClick={handleCopy}
-                className="text-primary hover:text-primary/80 transition-colors"
-              >
-                {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-              </button>
+          {/* Enhanced Short URL Preview */}
+          <div className="p-4 rounded-xl bg-gradient-to-br from-primary/20 via-primary/10 to-background border border-primary/20 shadow-sm relative overflow-hidden group">
+            <div className="absolute top-0 right-0 p-2 opacity-50 group-hover:opacity-100 transition-opacity">
+              <Globe className="w-12 h-12 -mr-4 -mt-4 text-primary/10 rotate-12" />
             </div>
-          )}
+            
+            <div className="relative space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary/60">Your Short Link</span>
+                {copied && <span className="text-[10px] font-bold text-green-500 uppercase">Copied!</span>}
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-xl font-bold font-mono tracking-tight text-foreground truncate">
+                    {baseUrl.replace(/^https?:\/\//, "")}/<span className="text-primary">{shortCode || "......"}</span>
+                  </p>
+                </div>
+                <Button 
+                  size="icon" 
+                  variant="ghost" 
+                  className="h-8 w-8 rounded-full hover:bg-primary/20 hover:text-primary shrink-0"
+                  onClick={handleCopy}
+                >
+                  {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                </Button>
+              </div>
+            </div>
+          </div>
 
           <Tabs defaultValue="basic">
             <TabsList className="w-full bg-muted">
@@ -254,30 +340,83 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
               <TabsTrigger value="qr" className="flex-1 text-sm">QR Code</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="basic" className="space-y-4 mt-4">
+            <TabsContent value="basic" className="space-y-5 mt-4">
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Destination URL *</Label>
-                <Input
-                  placeholder="https://example.com/your-long-url"
-                  value={destinationUrl}
-                  onChange={(e) => setDestinationUrl(e.target.value)}
-                  className="bg-background"
-                />
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm font-semibold">Destination URL *</Label>
+                  <button 
+                    onClick={handleSaveUrl}
+                    disabled={isSavingUrl || !destinationUrl}
+                    className="text-[10px] font-bold uppercase tracking-wide text-primary hover:text-primary/80 flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+                  >
+                    {isSavingUrl ? <RefreshCw className="w-3 h-3 animate-spin" /> : <Bookmark className="w-3 h-3" />}
+                    Save to Quick-Pick
+                  </button>
+                </div>
+                <div className="relative group">
+                  <Input
+                    placeholder="https://example.com/your-long-url"
+                    value={destinationUrl}
+                    onChange={(e) => setDestinationUrl(e.target.value)}
+                    className="bg-background/50 border-muted-foreground/20 focus:border-primary transition-all pr-10"
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 group-focus-within:opacity-100 transition-opacity">
+                    <ExternalLink className="w-4 h-4 text-muted-foreground/50" />
+                  </div>
+                </div>
+                
+                {/* Saved URLs Quick Pick */}
+                {savedUrls.length > 0 && (
+                  <div className="pt-1">
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Frequently Used</p>
+                    <div className="flex flex-wrap gap-2">
+                      {savedUrls.slice(0, 5).map((u) => (
+                        <div 
+                          key={u.id}
+                          className="group relative"
+                        >
+                          <button
+                            onClick={() => {
+                              setDestinationUrl(u.url);
+                              if (u.title) setTitle(u.title);
+                            }}
+                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all flex items-center gap-1.5 border border-border hover:border-primary/50 hover:bg-primary/5 ${
+                              destinationUrl === u.url ? "bg-primary/10 border-primary text-primary" : "bg-muted/50 text-muted-foreground"
+                            }`}
+                          >
+                            <span className="truncate max-w-[120px]">{u.title || u.url.replace(/^https?:\/\/(www\.)?/, "").split("/")[0]}</span>
+                          </button>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); removeSavedUrl(u.id); }}
+                            className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-destructive text-white opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center scale-75"
+                          >
+                            <X className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label className="text-sm font-medium">Custom Alias</Label>
+                <Label className="text-sm font-semibold">Custom Alias</Label>
                 <div className="flex gap-2">
-                  <Input
-                    placeholder="my-link"
-                    value={customAlias}
-                    onChange={(e) => setCustomAlias(e.target.value.replace(/[^a-zA-Z0-9-_]/g, ""))}
-                    className="bg-background font-mono"
-                  />
+                  <div className="relative flex-1">
+                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-mono text-xs opacity-50">
+                      /
+                    </div>
+                    <Input
+                      placeholder="my-link"
+                      value={customAlias}
+                      onChange={(e) => setCustomAlias(e.target.value.replace(/[^a-zA-Z0-9-_]/g, ""))}
+                      className="bg-background/50 border-muted-foreground/20 font-mono pl-6"
+                    />
+                  </div>
                   <Button
                     type="button"
                     variant="outline"
-                    size="icon"
+                    className="shrink-0 border-muted-foreground/20 hover:bg-primary/5 hover:text-primary transition-all"
                     onClick={() => {
                       const code = generateShortCode();
                       setCustomAlias("");
@@ -288,53 +427,66 @@ export default function CreateLinkDrawer({ open, onOpenChange, editLink, onSucce
                     <RefreshCw className="w-4 h-4" />
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">Leave empty to use generated code: <span className="font-mono text-primary">{shortCode}</span></p>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Title</Label>
-                <Input
-                  placeholder="My Campaign Link"
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="bg-background"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-sm font-medium">Expiry Date</Label>
-                <Input
-                  type="date"
-                  value={expiresAt}
-                  onChange={(e) => setExpiresAt(e.target.value)}
-                  className="bg-background"
-                  min={new Date().toISOString().slice(0, 10)}
-                />
-              </div>
-
-              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/50 border border-border">
-                <div>
-                  <p className="text-sm font-medium">Password Protection</p>
-                  <p className="text-xs text-muted-foreground">Require a password to access</p>
+                <div className="flex items-center gap-1.5 px-1">
+                  <div className="w-1 h-1 rounded-full bg-primary/40" />
+                  <p className="text-[11px] text-muted-foreground">
+                    Leave empty to use generated code: <span className="font-mono font-bold text-primary">{shortCode}</span>
+                  </p>
                 </div>
-                <Switch
-                  checked={isPasswordProtected}
-                  onCheckedChange={setIsPasswordProtected}
-                />
               </div>
 
-              {isPasswordProtected && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label className="text-sm font-medium">Password</Label>
+                  <Label className="text-sm font-semibold">Title (Optional)</Label>
                   <Input
-                    type="password"
-                    placeholder="Link password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="bg-background"
+                    placeholder="My Campaign Link"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    className="bg-background/50 border-muted-foreground/20"
                   />
                 </div>
-              )}
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-semibold">Expiry Date</Label>
+                  <Input
+                    type="date"
+                    value={expiresAt}
+                    onChange={(e) => setExpiresAt(e.target.value)}
+                    className="bg-background/50 border-muted-foreground/20"
+                    min={new Date().toISOString().slice(0, 10)}
+                  />
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-semibold flex items-center gap-2">
+                      Password Protection
+                      {isPasswordProtected && <span className="flex h-1.5 w-1.5 rounded-full bg-green-500" />}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Restrict access to verified visitors</p>
+                  </div>
+                  <Switch
+                    checked={isPasswordProtected}
+                    onCheckedChange={setIsPasswordProtected}
+                    className="data-[state=checked]:bg-primary"
+                  />
+                </div>
+
+                {isPasswordProtected && (
+                  <div className="space-y-2 pt-2 animate-in slide-in-from-top-2 duration-200">
+                    <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Set Password</Label>
+                    <Input
+                      type="password"
+                      placeholder="Enter a secure password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="bg-background border-primary/20 focus:border-primary h-9"
+                    />
+                  </div>
+                )}
+              </div>
             </TabsContent>
 
             <TabsContent value="utm" className="space-y-4 mt-4">

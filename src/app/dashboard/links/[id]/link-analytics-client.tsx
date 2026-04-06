@@ -218,7 +218,7 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
       {/* Real Click Metrics */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total Clicks", value: realClicks.length, color: "text-primary", icon: MousePointerClick },
+          { label: "Real Clicks", value: realClicks.length, color: "text-primary", icon: MousePointerClick },
           { label: "Unique Visitors", value: uniqueVisitors, color: "text-cyan-400", icon: UserCheck },
           { label: "Quality Score", value: `${avgQuality}%`, color: avgQuality >= 70 ? "text-green-400" : avgQuality >= 40 ? "text-amber-400" : "text-red-400", icon: Shield },
         ].map((stat, i) => (
@@ -263,7 +263,7 @@ export default function LinkAnalyticsClient({ link, clicks }: LinkAnalyticsClien
           </AreaChart>
         </ResponsiveContainer>
         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-primary inline-block"></span>Total Clicks</span>
+          <span className="flex items-center gap-1.5"><span className="w-4 h-0.5 bg-primary inline-block"></span>Real Clicks</span>
         </div>
       </div>
 

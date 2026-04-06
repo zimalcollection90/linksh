@@ -12,7 +12,7 @@ export async function GET(req: NextRequest) {
   const earningsQuery = supabase.from("earnings").select("amount, user_id");
   const clickEventsQuery = supabase
     .from("click_events")
-    .select("clicked_at, country, device_type, browser, is_bot, is_filtered, is_unique, user_id")
+    .select("clicked_at, country, device_type, browser, is_unique, user_id")
     .order("clicked_at", { ascending: false })
     .limit(50000);
   const membersQuery = supabase.from("users").select("id", { count: "exact", head: true }).eq("status", "active");
@@ -39,10 +39,8 @@ export async function GET(req: NextRequest) {
   const totalClicks = (linksRes.data || []).reduce((s: number, l: any) => s + (l.click_count || 0), 0);
   const totalEarnings = (earningsRes.data || []).reduce((s: number, e: any) => s + (e.amount || 0), 0);
   const activeMembers = (membersRes.data || []).length;
-  const realClicks = (clicksRes.data || []).filter((c: any) => !c.is_bot && !c.is_filtered).length;
+  const realClicks = (clicksRes.data || []).length;
   const uniqueUsers = (clicksRes.data || []).filter((c: any) => !!c.is_unique).length;
-  const filteredClicks = (clicksRes.data || []).filter((c: any) => !!c.is_filtered).length;
-  const botExcluded = (clicksRes.data || []).filter((c: any) => !!c.is_bot).length;
 
   const now = new Date();
   const dayCutoff = new Date(now);
@@ -62,9 +60,8 @@ export async function GET(req: NextRequest) {
     Object.entries(periods).map(([k, rows]) => [
       k,
       {
-        realClicks: rows.filter((r) => !r.is_bot && !r.is_filtered).length,
+        realClicks: rows.length,
         uniqueUsers: rows.filter((r) => !!r.is_unique).length,
-        filteredClicks: rows.filter((r) => !!r.is_filtered).length,
       },
     ])
   );
@@ -73,7 +70,6 @@ export async function GET(req: NextRequest) {
   const deviceMap: Record<string, number> = {};
   const browserMap: Record<string, number> = {};
   for (const c of clicksRes.data || []) {
-    if (c.is_bot || c.is_filtered) continue;
     if (c.country) countryMap[c.country] = (countryMap[c.country] || 0) + 1;
     if (c.device_type) deviceMap[c.device_type] = (deviceMap[c.device_type] || 0) + 1;
     if (c.browser) browserMap[c.browser] = (browserMap[c.browser] || 0) + 1;
@@ -98,8 +94,6 @@ export async function GET(req: NextRequest) {
       activeMembers,
       realClicks,
       uniqueUsers,
-      filteredClicks,
-      botExcluded,
     },
     trends: periodStats,
     countryBreakdown,

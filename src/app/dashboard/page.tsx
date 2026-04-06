@@ -22,8 +22,8 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
   const userId = profile?.id;
   const status = profile?.status ?? "pending";
 
-  const range = searchParams.range || "30d";
-  let days: number | null = 30;
+  const range = searchParams.range || "today";
+  let days: number | null = 1;
   if (range === "today") days = 1;
   else if (range === "7d") days = 7;
   else if (range === "30d") days = 30;
@@ -195,9 +195,6 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
   const { data: recentClicks } = await supabase
     .from("click_events")
     .select("*, links(title, short_code)")
-    .eq("is_bot", false)
-    .eq("is_filtered", false)
-    .eq("is_unique", true)
     .order("clicked_at", { ascending: false })
     .limit(10);
 
@@ -225,8 +222,6 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
           .select("id", { count: "exact", head: true })
           .eq("user_id", userId)
           .gte("clicked_at", monthStart)
-          .eq("is_bot", false)
-          .eq("is_filtered", false)
       : Promise.resolve({ count: 0 })
   ]);
 

@@ -158,8 +158,6 @@ export const enrichClickFunction = inngest.createFunction(
     const clickResult = await step.run("insert-click-event", async () => {
       const adminClient = createAdminClient();
 
-      const isBot = /(bot|crawler|spider|crawl|scraper|pingdom|headless|facebookexternalhit|facebot|googlebot|bingbot|yandexbot|baiduspider|twitterbot|linkedinbot|embedly|quora|pinterest|slackbot|vkShare|W3C_Validator)/i.test(userAgent || "");
-
       let isSelfClick = false;
       if (ip && userId) {
         const { data: exclusion } = await adminClient
@@ -169,7 +167,7 @@ export const enrichClickFunction = inngest.createFunction(
       }
 
       let ipClickedLast24h = false;
-      if (ip && !isSelfClick && !isBot) {
+      if (ip && !isSelfClick) {
         const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
         const { data: priorClick } = await adminClient
           .from("click_events").select("id")
@@ -178,9 +176,12 @@ export const enrichClickFunction = inngest.createFunction(
         ipClickedLast24h = Boolean(priorClick);
       }
 
-      const isUnique = Boolean(ip) && !isBot && !isSelfClick && !ipClickedLast24h;
-      const isFiltered = isBot || isSelfClick || ipClickedLast24h;
-      const filterReason = isBot ? "bot" : isSelfClick ? "self_click" : ipClickedLast24h ? "duplicate_ip_24h" : null;
+      const isUnique = Boolean(ip) && !isSelfClick && !ipClickedLast24h;
+
+      // Only insert unique human clicks according to the new logic
+      if (!isUnique) {
+        return { clickEventId: null, isUnique };
+      }
 
       const { data: clickData, error } = await adminClient
         .from("click_events")
@@ -196,11 +197,7 @@ export const enrichClickFunction = inngest.createFunction(
           os,
           referrer: referer,
           user_agent: userAgent,
-          is_unique: isUnique,
-          is_bot: isBot,
-          is_filtered: isFiltered,
-          filter_reason: filterReason,
-          quality_score: isBot ? 0 : isSelfClick ? 10 : ipClickedLast24h ? 30 : 100,
+          is_unique: true,
         })
         .select("id").single();
 

@@ -52,6 +52,12 @@ export default function LinksClient({
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editLink, setEditLink] = useState<LinkItem | null>(null);
+  const [mounted, setMounted] = useState(false);
+  
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
+  
   const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
   
   const handleCopy = (shortCode: string, id: string) => {
@@ -201,9 +207,9 @@ export default function LinksClient({
                     </td>
                     <td className="px-4 py-3 hidden lg:table-cell">
                       <span className="text-xs text-muted-foreground">
-                        {link.created_at && !isNaN(new Date(link.created_at).getTime())
+                        {mounted && link.created_at && !isNaN(new Date(link.created_at).getTime())
                           ? formatDistanceToNow(new Date(link.created_at), { addSuffix: true })
-                          : "—"}
+                          : link.created_at ? new Date(link.created_at).toLocaleDateString() : "—"}
                       </span>
                     </td>
                     {isAdmin && (

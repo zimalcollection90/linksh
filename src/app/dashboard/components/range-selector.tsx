@@ -16,7 +16,7 @@ const RANGES = [
 export default function RangeSelector({ className }: { className?: string }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const currentRange = searchParams.get("range") || "30d";
+  const currentRange = searchParams.get("range") || "today";
 
   const handleRangeChange = (value: string) => {
     const params = new URLSearchParams(searchParams.toString());
