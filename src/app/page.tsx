@@ -1,10 +1,21 @@
 import Link from "next/link";
 import { Zap, BarChart3, Shield, Link2, ArrowRight, Globe, Users } from 'lucide-react';
 import { createClient } from "../../supabase/server";
+import UserProfile from "@/components/user-profile";
 
 export default async function Home() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  let profile = null;
+  if (user) {
+    const { data } = await supabase
+      .from("users")
+      .select("*")
+      .eq("id", user.id)
+      .single();
+    profile = data;
+  }
 
   return (
     <div className="min-h-screen bg-background text-foreground dark" style={{ background: "#0D1117" }}>
@@ -18,9 +29,12 @@ export default async function Home() {
         </div>
         <div className="flex items-center gap-3">
           {user ? (
-            <Link href="/dashboard" className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all">
-              Dashboard
-            </Link>
+            <div className="flex items-center gap-4">
+              <Link href="/dashboard" className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium transition-all">
+                Dashboard
+              </Link>
+              <UserProfile user={user} profile={profile} />
+            </div>
           ) : (
             <>
               <Link href="/sign-in" className="text-white/70 hover:text-white text-sm transition-colors">Sign In</Link>

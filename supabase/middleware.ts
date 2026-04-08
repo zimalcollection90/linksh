@@ -24,7 +24,8 @@ export const updateSession = async (request: NextRequest) => {
             }));
           },
           setAll(cookiesToSet) {
-            const isAdminPath = request.nextUrl.pathname.startsWith('/admin');
+            const isAdminPath = request.nextUrl.pathname.startsWith('/admin') || 
+                                request.nextUrl.pathname.startsWith('/dashboard/members');
             const maxAge = isAdminPath ? 24 * 60 * 60 : 30 * 24 * 60 * 60; // seconds
             cookiesToSet.forEach(({ name, value, options }) => {
               request.cookies.set(name, value);
@@ -51,9 +52,7 @@ export const updateSession = async (request: NextRequest) => {
       return NextResponse.redirect(new URL("/sign-in", request.url));
     }
 
-    if (request.nextUrl.pathname === "/" && !error) {
-      return NextResponse.redirect(new URL("/", request.url));
-    }
+
 
     return response;
   } catch (e) {
