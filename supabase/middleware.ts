@@ -24,6 +24,8 @@ export const updateSession = async (request: NextRequest) => {
             }));
           },
           setAll(cookiesToSet) {
+            const isAdminPath = request.nextUrl.pathname.startsWith('/admin');
+            const maxAge = isAdminPath ? 24 * 60 * 60 : 30 * 24 * 60 * 60; // seconds
             cookiesToSet.forEach(({ name, value, options }) => {
               request.cookies.set(name, value);
               response = NextResponse.next({
@@ -31,7 +33,9 @@ export const updateSession = async (request: NextRequest) => {
                   headers: request.headers,
                 },
               });
-              response.cookies.set(name, value, options);
+              // Merge maxAge into cookie options
+              const cookieOptions = { ...options, maxAge };
+              response.cookies.set(name, value, cookieOptions);
             });
           },
         },
