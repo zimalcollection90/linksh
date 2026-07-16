@@ -42,7 +42,11 @@ interface AdminDashboardProps {
   profile: any;
   heatmapData: Array<{ code: string; value: number }>;
   trendData?: Array<{ date: string; clicks: number; earnings: number }>;
-  monthlyGoal?: number;
+  globalGoal: number;
+  overallClicks: number;
+  personalGoal: number;
+  personalClicks: number;
+  monthlyMembers: any[];
   topCountries?: Array<{ country: string; country_code: string; click_count: number }>;
   currentRange?: string;
 }
@@ -55,7 +59,11 @@ export default function AdminDashboard({
   profile,
   heatmapData,
   trendData,
-  monthlyGoal = 10000,
+  globalGoal = 10000,
+  overallClicks = 0,
+  personalGoal = 1000,
+  personalClicks = 0,
+  monthlyMembers = [],
   topCountries = [],
   currentRange = "today",
 }: AdminDashboardProps) {
@@ -69,7 +77,8 @@ export default function AdminDashboard({
     all: "all time",
   }[currentRange] || "last 30 days";
 
-  const progress = Math.min(((stats.totalClicks || 0) / (monthlyGoal || 1000) * 100), 100);
+  const globalProgress = Math.min((overallClicks / (globalGoal || 1)) * 100, 100);
+  const personalProgress = Math.min((personalClicks / (personalGoal || 1)) * 100, 100);
 
   return (
     <div className="space-y-8 max-w-[1600px] mx-auto pb-12">
@@ -97,7 +106,7 @@ export default function AdminDashboard({
         <RangeSelector />
       </div>
       </motion.div>
-
+ 
       {/* KPI Section */}
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-6">
         <div className="xl:col-span-3">
@@ -113,40 +122,72 @@ export default function AdminDashboard({
         >
           <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-32 h-32 bg-primary/10 rounded-full blur-3xl group-hover:bg-primary/20 transition-all duration-1000" />
           
-          <div className="relative flex flex-col h-full justify-between gap-6">
+          <div className="relative flex flex-col h-full justify-between gap-5">
             <div className="flex items-center justify-between">
               <div className="p-2 rounded-xl bg-primary/20 text-primary">
                 <BarChart3 className="w-5 h-5" />
               </div>
               <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 text-[10px] font-bold uppercase tracking-wider">
-                Monthly Target
+                Monthly Targets
               </Badge>
             </div>
 
-            <div>
-              <div className="flex items-baseline justify-between mb-2">
-                <h4 className="text-3xl font-black text-foreground tabular-nums tracking-tighter">
-                  {progress.toFixed(1)}%
-                </h4>
-                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
-                  Progress
-                </p>
+            <div className="space-y-4">
+              {/* Global Goal */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs font-black text-foreground uppercase tracking-wider">Global Goal</span>
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    {globalProgress.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between text-xs font-semibold tabular-nums text-foreground/90">
+                  <span>{overallClicks.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">/ {globalGoal.toLocaleString()}</span></span>
+                  <span className="text-[10px] text-muted-foreground font-medium italic">
+                    {overallClicks >= globalGoal ? "Target Met! 🎉" : `${(globalGoal - overallClicks).toLocaleString()} left`}
+                  </span>
+                </div>
+                <div className="relative h-2 w-full bg-primary/15 rounded-full overflow-hidden border border-primary/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${globalProgress}%` }}
+                    transition={{ duration: 1.5, ease: "circOut", delay: 0.6 }}
+                    className="h-full bg-primary relative"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
+                  </motion.div>
+                </div>
               </div>
-              
-              <div className="relative h-2.5 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 1.5, ease: "circOut", delay: 0.6 }}
-                  className="h-full bg-primary relative"
-                >
-                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
-                </motion.div>
+
+              {/* Personal Goal */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs font-black text-foreground uppercase tracking-wider">My Goal</span>
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    {personalProgress.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between text-xs font-semibold tabular-nums text-foreground/90">
+                  <span>{personalClicks.toLocaleString()} <span className="text-[10px] font-normal text-muted-foreground">/ {personalGoal.toLocaleString()}</span></span>
+                  <span className="text-[10px] text-muted-foreground font-medium italic">
+                    {personalClicks >= personalGoal ? "Goal Met! 🔥" : `${(personalGoal - personalClicks).toLocaleString()} left`}
+                  </span>
+                </div>
+                <div className="relative h-2 w-full bg-primary/15 rounded-full overflow-hidden border border-primary/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${personalProgress}%` }}
+                    transition={{ duration: 1.5, ease: "circOut", delay: 0.8 }}
+                    className="h-full bg-emerald-500 relative"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.4)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
+                  </motion.div>
+                </div>
               </div>
             </div>
-
-            <p className="text-[10px] leading-relaxed text-muted-foreground/70 font-medium italic">
-              Currently at <span className="text-foreground font-bold">{(stats.totalClicks || 0).toLocaleString()}</span> clicks of your <span className="text-foreground font-bold">{(monthlyGoal || 10000).toLocaleString()}</span> goal.
+            
+            <p className="text-[9px] leading-relaxed text-muted-foreground/60 font-medium italic">
+              Monthly stats automatically reset at the start of each month.
             </p>
           </div>
         </motion.div>
@@ -169,7 +210,7 @@ export default function AdminDashboard({
       {/* Tables Section */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-4">
         <TopCountries data={topCountries} title="Geographic Click Performance" />
-        <MemberLeaderboard members={topMembers} />
+        <MemberLeaderboard members={topMembers} monthlyMembers={monthlyMembers} />
       </div>
 
       {/* Bottom Full-width Row */}

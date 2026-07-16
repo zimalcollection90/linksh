@@ -198,5 +198,26 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "update_password") {
+    const password = (body?.password || "").toString();
+    if (!password || password.length < 6) {
+      return NextResponse.json({ error: "Password must be at least 6 characters" }, { status: 400 });
+    }
+    if (targetIds.length > 1) {
+      return NextResponse.json({ error: "Bulk password updates are not supported" }, { status: 400 });
+    }
+
+    const adminClient = createAdminClient();
+    const { error } = await adminClient.auth.admin.updateUserById(targetIds[0], {
+      password: password,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
   return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
 }
+

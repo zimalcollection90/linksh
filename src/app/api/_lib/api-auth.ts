@@ -19,11 +19,22 @@ function getBearerToken(req: NextRequest) {
   return match?.[1] || null;
 }
 
+// Helpers to format error responses as JSON
+function createJsonErrorResponse(message: string, status: number) {
+  return new Response(
+    JSON.stringify({ error: message }),
+    {
+      status,
+      headers: { "Content-Type": "application/json" }
+    }
+  );
+}
+
 async function getSessionContext(): Promise<ApiContext> {
   const supabase = await createClient();
   const { data: authData, error } = await supabase.auth.getUser();
   if (error || !authData.user) {
-    throw new Response("Unauthorized", { status: 401 });
+    throw createJsonErrorResponse("Unauthorized", 401);
   }
 
   const { data: profile } = await supabase
@@ -33,7 +44,7 @@ async function getSessionContext(): Promise<ApiContext> {
     .single();
 
   if (!profile) {
-    throw new Response("Account profile not found", { status: 403 });
+    throw createJsonErrorResponse("Account profile not found", 403);
   }
 
   const role = (
@@ -54,7 +65,7 @@ async function getSessionContext(): Promise<ApiContext> {
 async function getApiKeyContext(req: NextRequest): Promise<ApiContext> {
   const token = getBearerToken(req);
   if (!token) {
-    throw new Response("Unauthorized", { status: 401 });
+    throw createJsonErrorResponse("Unauthorized", 401);
   }
 
   const admin = createAdminClient();
@@ -66,7 +77,7 @@ async function getApiKeyContext(req: NextRequest): Promise<ApiContext> {
     .single();
 
   if (error || !keyRow) {
-    throw new Response("Invalid API key", { status: 401 });
+    throw createJsonErrorResponse("Invalid API key", 401);
   }
 
   // Best-effort usage update
@@ -91,7 +102,7 @@ async function getApiKeyContext(req: NextRequest): Promise<ApiContext> {
     .single();
 
   if (!profile) {
-    throw new Response("Account profile not found", { status: 403 });
+    throw createJsonErrorResponse("Account profile not found", 403);
   }
 
   const role = (
@@ -117,18 +128,25 @@ export async function getApiContext(req: NextRequest): Promise<ApiContext> {
 
 export function requireAdmin(ctx: ApiContext) {
   if (ctx.role !== "admin" && ctx.role !== "super_admin") {
-    throw new Response("Forbidden", { status: 403 });
+    throw createJsonErrorResponse("Forbidden", 403);
   }
 }
 
 export function requireActiveMember(ctx: ApiContext) {
+  // Admins always bypass active status requirements to prevent lockouts during setup
+  if (ctx.role === "admin" || ctx.role === "super_admin") {
+    return;
+  }
   if (ctx.memberStatus !== "active") {
-    throw new Response("Account not approved", { status: 403 });
+    throw createJsonErrorResponse("Account not approved", 403);
   }
 }
 
 /** Returns a NextResponse error instead of throwing — use this in route handlers */
 export function requireActiveUserResponse(ctx: ApiContext): NextResponse | null {
+  if (ctx.role === "admin" || ctx.role === "super_admin") {
+    return null;
+  }
   if (ctx.memberStatus !== "active") {
     return NextResponse.json(
       { error: "Account not approved. Please wait for admin to activate your account." },
@@ -140,3 +158,4 @@ export function requireActiveUserResponse(ctx: ApiContext): NextResponse | null 
 
 // Backward compatible alias
 export const requireActiveMembership = requireActiveMember;
+

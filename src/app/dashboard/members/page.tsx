@@ -1,4 +1,5 @@
 import { createClient } from "../../../../supabase/server";
+import { createAdminClient } from "../../../../supabase/admin";
 import { redirect } from "next/navigation";
 import MembersClient from "./members-client";
 
@@ -14,59 +15,49 @@ export default async function MembersPage() {
     .single();
 
   const isAdmin = profile?.role === "admin" || profile?.role === "super_admin";
-  if (!isAdmin || profile?.status !== "active") {
+
+  // Only admins can access this page. We do NOT require status==="active" for admins
+  // because a super_admin could themselves have any status and should always have access.
+  if (!isAdmin) {
     return redirect("/dashboard");
   }
 
-  // Fetch all members globally — no company filtering
-  const { data: members } = await supabase
+  // Use the admin client (which bypasses RLS) to query all members and their aggregated stats
+  const adminSupabase = createAdminClient();
+
+  // Use the optimised RPC that aggregates stats server-side (avoids fetching 50k click rows)
+  const { data: membersData } = await adminSupabase.rpc("get_members_with_stats_v3", {
+    p_limit: 200,
+    p_days: null, // all-time stats
+  });
+
+  // Fetch base user profile fields the RPC doesn't return (avatar, ip, dates, goal, etc.)
+  const { data: users } = await adminSupabase
     .from("users")
-    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, last_active_at, last_seen_ip")
+    .select("id, full_name, display_name, email, avatar_url, status, role, created_at, last_active_at, last_seen_ip, monthly_click_goal")
     .order("created_at", { ascending: false });
 
-  // Link stats per user
-  const { data: links } = await supabase
-    .from("links")
-    .select("user_id, click_count");
+  // Merge RPC stats into the user list
+  const statsByUser: Record<string, any> = {};
+  for (const m of membersData || []) {
+    statsByUser[m.id] = m;
+  }
 
-  // Click stats per user
-  const { data: memberClickStats } = await supabase
-    .from("click_events")
-    .select("user_id, is_bot, is_filtered, is_unique")
-    .limit(50000);
-
-  const clickStatsByUser: Record<string, any> = {};
-  for (const s of memberClickStats || []) {
-    if (!s.user_id) continue;
-    const bucket = clickStatsByUser[s.user_id] || {
-      real_clicks: 0, unique_users: 0, bot_excluded: 0, filtered_clicks: 0,
+  const membersWithStats = (users || []).map((u: any) => {
+    const stats = statsByUser[u.id] || {};
+    return {
+      ...u,
+      role: u.role || "member",
+      status: u.status || "pending",
+      totalClicks: Number(stats.total_clicks) || 0,
+      linkCount: Number(stats.link_count) || 0,
+      realClicks: Number(stats.real_clicks) || 0,
+      uniqueUsers: Number(stats.unique_users) || 0,
+      botExcluded: Number(stats.bot_excluded) || 0,
+      filteredClicks: Number(stats.filtered_clicks) || 0,
     };
-    if (s.is_bot) bucket.bot_excluded += 1;
-    if (s.is_filtered) bucket.filtered_clicks += 1;
-    if (!s.is_bot && !s.is_filtered) bucket.real_clicks += 1;
-    if (s.is_unique) bucket.unique_users += 1;
-    clickStatsByUser[s.user_id] = bucket;
-  }
-
-  const linkStats: Record<string, { linkCount: number; totalClicks: number }> = {};
-  for (const l of links || []) {
-    if (!l.user_id) continue;
-    linkStats[l.user_id] = linkStats[l.user_id] || { linkCount: 0, totalClicks: 0 };
-    linkStats[l.user_id].linkCount += 1;
-    linkStats[l.user_id].totalClicks += l.click_count || 0;
-  }
-
-  const membersWithStats = (members || []).map((m: any) => ({
-    ...m,
-    role: m.role || "member",
-    status: m.status || "pending",
-    totalClicks: linkStats[m.id]?.totalClicks || 0,
-    linkCount: linkStats[m.id]?.linkCount || 0,
-    realClicks: Number(clickStatsByUser[m.id]?.real_clicks) || 0,
-    uniqueUsers: Number(clickStatsByUser[m.id]?.unique_users) || 0,
-    botExcluded: Number(clickStatsByUser[m.id]?.bot_excluded) || 0,
-    filteredClicks: Number(clickStatsByUser[m.id]?.filtered_clicks) || 0,
-  }));
+  });
 
   return <MembersClient members={membersWithStats} />;
 }
+

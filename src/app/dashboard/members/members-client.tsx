@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import {
   Search, Ban, CheckCircle, Users, MoreHorizontal, Shield, Download,
   BarChart2, Clock, ShieldCheck, Bot, FilterX, UserCheck, UserX, RefreshCw,
-  Wifi, TrendingUp, Activity, Target
+  Wifi, TrendingUp, Activity, Target, Lock
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import {
@@ -72,24 +72,6 @@ export default function MembersClient({ members: initialMembers }: { members: an
     suspended: members.filter(m => m.status === "suspended").length,
   }), [members]);
 
-  // Auto-refresh members from API
-  useEffect(() => {
-    const loadMembers = async () => {
-      try {
-        const res = await fetch("/api/admin/members", { cache: "no-store" });
-        const json = await res.json();
-        if (res.ok && Array.isArray(json?.members)) {
-          setMembers(json.members.map((m: any) => ({
-            ...m,
-            status: m.membership_status || m.status || "pending",
-          })));
-        }
-      } catch {
-        // best-effort
-      }
-    };
-    loadMembers();
-  }, []);
 
   const callApi = async (payload: any) => {
     const res = await fetch("/api/admin/members", {
@@ -182,6 +164,27 @@ export default function MembersClient({ members: initialMembers }: { members: an
       setGoalDialog(null);
     } catch (e: any) {
       toast.error(e?.message || "Failed to update goal");
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  const [passwordDialog, setPasswordDialog] = useState<{ open: boolean; memberId: string; name: string } | null>(null);
+  const [newPassword, setNewPassword] = useState<string>("");
+
+  const handleResetPassword = async (memberId: string, pass: string) => {
+    if (!pass || pass.length < 6) {
+      toast.error("Password must be at least 6 characters");
+      return;
+    }
+    setProcessing(memberId);
+    try {
+      await callApi({ action: "update_password", userId: memberId, password: pass });
+      toast.success("Password updated successfully");
+      setPasswordDialog(null);
+      setNewPassword("");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to update password");
     } finally {
       setProcessing(null);
     }
@@ -490,6 +493,16 @@ export default function MembersClient({ members: initialMembers }: { members: an
                               <Target className="w-3.5 h-3.5" /> Set Monthly Goal
                             </DropdownMenuItem>
 
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setNewPassword("");
+                                setPasswordDialog({ open: true, memberId: member.id, name });
+                              }}
+                              className="gap-2"
+                            >
+                              <Lock className="w-3.5 h-3.5" /> Reset Password
+                            </DropdownMenuItem>
+
                             <DropdownMenuSeparator />
 
                             {/* Approve */}
@@ -622,6 +635,42 @@ export default function MembersClient({ members: initialMembers }: { members: an
               onClick={() => goalDialog && handleUpdateGoal(goalDialog.memberId, parseInt(newGoal) || 0)}
             >
               Update Goal
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reset Password Dialog */}
+      <Dialog open={!!passwordDialog?.open} onOpenChange={() => setPasswordDialog(null)}>
+        <DialogContent className="sm:max-w-md bg-card border-border">
+          <DialogHeader>
+            <DialogTitle style={{ fontFamily: "Syne, sans-serif" }}>Reset User Password</DialogTitle>
+            <DialogDescription>
+              Enter a new password for <strong>{passwordDialog?.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <label className="text-sm font-medium">New Password</label>
+              <Input
+                type="password"
+                placeholder="At least 6 characters"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                className="bg-muted/50 font-mono"
+              />
+            </div>
+          </div>
+          <div className="flex gap-3 mt-2">
+            <Button variant="outline" className="flex-1" onClick={() => setPasswordDialog(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              disabled={processing === passwordDialog?.memberId}
+              onClick={() => passwordDialog && handleResetPassword(passwordDialog.memberId, newPassword)}
+            >
+              Reset Password
             </Button>
           </div>
         </DialogContent>

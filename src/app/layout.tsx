@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { TempoInit } from "@/components/tempo-init";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -9,13 +9,19 @@ export const metadata: Metadata = {
   title: "LinkFlux — URL Shortener & Analytics Platform",
   description: "Shorten URLs, track clicks, manage teams, and grow with real-time analytics.",
   manifest: "/manifest.json",
-  themeColor: "#7c3aed",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
     title: "LinkFlux",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#7c3aed",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
 };
 
 export default function RootLayout({

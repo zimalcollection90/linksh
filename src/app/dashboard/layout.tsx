@@ -4,6 +4,8 @@ import AppSidebar from "@/components/app-sidebar";
 import TopHeader from "@/components/top-header";
 import { Toaster } from "@/components/ui/sonner";
 
+export const dynamic = "force-dynamic";
+
 export default async function DashboardLayout({
   children,
 }: {
@@ -21,7 +23,7 @@ export default async function DashboardLayout({
       <AppSidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <TopHeader />
-        <main className="flex-1 p-4 md:p-6 overflow-auto">
+        <main className="flex-1 p-4 md:p-6 overflow-auto page-fade-in">
           {children}
         </main>
       </div>

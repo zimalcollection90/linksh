@@ -162,12 +162,7 @@ export default function AnalyticsClient({
   currentRange?: string;
   view?: "own" | "all";
 }) {
-  const [hasMounted, setHasMounted] = React.useState(false);
   const [isRepairing, setIsRepairing] = React.useState(false);
-
-  React.useEffect(() => {
-    setHasMounted(true);
-  }, []);
 
   const handleRepair = async () => {
     setIsRepairing(true);
@@ -259,7 +254,7 @@ export default function AnalyticsClient({
       })
     : [];
 
-  if (!hasMounted) return null;
+
 
   return (
     <div className="space-y-6 max-w-[1200px] mx-auto">

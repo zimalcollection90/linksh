@@ -1,4 +1,5 @@
 import { createClient } from "../../../supabase/server";
+import { createAdminClient } from "../../../supabase/admin";
 import AdminDashboard from "./components/admin-dashboard";
 import MemberDashboard from "./components/member-dashboard";
 import Link from "next/link";
@@ -215,9 +216,13 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
   };
 
   // Monthly Goal logic
-  const [goalRes, monthlyClicksRes] = await Promise.all([
+  const currentDayOfMonth = new Date().getDate();
+  const [goalRes, overallClicksRes, personalClicksRes] = await Promise.all([
     supabase.from("site_settings").select("value").eq("key", "monthly_click_goal").single(),
-    !isAdmin && userId 
+    supabase.from("click_events")
+      .select("id", { count: "exact", head: true })
+      .gte("clicked_at", monthStart),
+    userId
       ? supabase.from("click_events")
           .select("id", { count: "exact", head: true })
           .eq("user_id", userId)
@@ -226,11 +231,43 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
   ]);
 
   const globalGoal = parseInt(goalRes.data?.value || "1000");
-  const monthlyGoal = profile?.monthly_click_goal && profile.monthly_click_goal > 0
+  const overallClicks = overallClicksRes.count || 0;
+  const personalClicks = personalClicksRes.count || 0;
+  const personalGoal = profile?.monthly_click_goal && profile.monthly_click_goal > 0
     ? profile.monthly_click_goal
     : globalGoal;
-  const monthlyClicks = monthlyClicksRes.count || 0;
 
+  let monthlyMembers: any[] = [];
+  if (isAdmin) {
+    // Use the admin client to bypass any RLS limits on other users
+    const adminSupabase = createAdminClient();
+    const [monthlyMembersRes, usersGoalsRes] = await Promise.all([
+      adminSupabase.rpc("get_members_with_stats_v3", {
+        p_limit: 100,
+        p_days: currentDayOfMonth
+      }),
+      adminSupabase
+        .from("users")
+        .select("id, monthly_click_goal")
+    ]);
+
+    const goalsMap = new Map((usersGoalsRes.data || []).map((u: any) => [u.id, u.monthly_click_goal]));
+    monthlyMembers = (monthlyMembersRes.data || []).map((m: any) => {
+      const userGoal = goalsMap.get(m.id);
+      const goal = userGoal && userGoal > 0 ? userGoal : globalGoal;
+      const monthlyClicks = Number(m.real_clicks) || 0;
+      const remaining = Math.max(0, goal - monthlyClicks);
+      const progress = goal > 0 ? Math.min(100, (monthlyClicks / goal) * 100) : 0;
+      return {
+        ...m,
+        displayName: m.display_name || m.full_name || m.email?.split("@")[0] || "Member",
+        monthlyClicks,
+        goal,
+        remaining,
+        progress
+      };
+    });
+  }
 
   if (isAdmin) {
     return (
@@ -242,7 +279,11 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
         profile={profile}
         heatmapData={heatmapData}
         trendData={trendData}
-        monthlyGoal={monthlyGoal}
+        globalGoal={globalGoal}
+        overallClicks={overallClicks}
+        personalGoal={personalGoal}
+        personalClicks={personalClicks}
+        monthlyMembers={monthlyMembers}
         topCountries={topCountries}
         currentRange={range}
       />
@@ -255,8 +296,10 @@ export default async function Dashboard(props: { searchParams: Promise<{ range?:
       recentLinks={recentLinks || []}
       profile={profile}
       trendData={trendData}
-      monthlyGoal={monthlyGoal}
-      monthlyClicks={monthlyClicks}
+      personalGoal={personalGoal}
+      personalClicks={personalClicks}
+      globalGoal={globalGoal}
+      overallClicks={overallClicks}
       topCountries={topCountries}
       currentRange={range}
     />

@@ -6,6 +6,68 @@ import { inngest } from "../../inngest/client";
 
 export const runtime = "edge";
 
+// ─── Comprehensive bot / crawler / preview-service UA patterns ────────────────
+// These cover: social media previewers, search crawlers, headless browsers,
+// monitoring tools, HTTP libraries, and other automated systems.
+const BOT_UA_PATTERN =
+  /bot|crawler|spider|crawl|scraper|preview|prerender|preload|prefetch|meta-externalagent|facebookexternalhit|facebot|whatsapp|telegrambot|discordbot|linkedinbot|slackbot|slackhq|twitterbot|pinterest|applebot|googlebot|google-read-aloud|googleimageproxy|feedburner|feedfetcher|bingbot|msnbot|slurp|duckduckbot|baiduspider|yandex|yandexbot|petalbot|bytespider|ahrefsbot|semrushbot|mj12bot|dotbot|blexbot|rogerbot|exabot|archive\.org_bot|ia_archiver|uptimerobot|statuscake|pingdom|gtmetrix|datadog|headlesschrome|headless|phantomjs|puppeteer|playwright|selenium|webdriver|python-requests|python\/|curl\/|wget\/|libwww|java\/|go-http-client|okhttp|axios|node-fetch|got\/|scrapy|httpx|requests|urllib|mechanize|ruby|perl|php\/|cfnetwork|nativehost|dataprovider|mail\.ru|barkrowler|proximic|scoutjet|seznambot|seokicks|sistrix|similarweb|deepcrawl|netcraft|nikto|masscan|zgrab|nuclei|dirbuster|sqlmap|nmap/i;
+
+// Minimal UA length for a real browser (e.g. "Mozilla/5.0 ..." is always > 60 chars)
+const MIN_REAL_UA_LENGTH = 50;
+
+/**
+ * Multi-signal bot detection at the edge.
+ * Returns true if the request is likely from a bot/crawler/preview service.
+ * When true, we redirect silently without recording any analytics.
+ */
+function isLikelyBot(userAgent: string, request: NextRequest): boolean {
+  // 1. Empty user-agent → definitely automated
+  if (!userAgent || userAgent.trim().length === 0) return true;
+
+  // 2. Known bot/crawler/preview pattern match
+  if (BOT_UA_PATTERN.test(userAgent)) return true;
+
+  // 3. Suspiciously short user-agent (no real browser is this terse)
+  if (userAgent.length < MIN_REAL_UA_LENGTH) return true;
+
+  // 4. Missing Accept header — real browsers always send this
+  const accept = request.headers.get("accept");
+  if (!accept) return true;
+
+  // 5. Missing Accept-Language header — social media previewers routinely omit this.
+  //    Every major browser (Chrome, Firefox, Safari, Edge) sends Accept-Language.
+  const acceptLanguage = request.headers.get("accept-language");
+  if (!acceptLanguage) return true;
+
+  return false;
+}
+
+/**
+ * Create a lightweight browser fingerprint for accurate Unique User deduplication.
+ * We combine the visitor's IP + a normalised User-Agent hash so that:
+ *  - Two people on the same shared IP (e.g. café Wi-Fi) are counted as 2 unique users.
+ *  - One person whose ISP rotates their IP is still deduplicated by their browser fingerprint.
+ *
+ * We do NOT store raw PII — only the hex digest of the combined string.
+ */
+async function buildFingerprint(ip: string | null, userAgent: string): Promise<string | null> {
+  if (!ip && !userAgent) return null;
+  // Normalise UA: lower-case, strip version numbers to group same browser across minor updates
+  const normUA = userAgent
+    .toLowerCase()
+    .replace(/[\d]+\.[\d]+\.[\d]+\.[\d]+/g, "V") // strip 4-part versions
+    .replace(/[\d]+\.[\d]+\.[\d]+/g, "V")          // strip 3-part versions
+    .replace(/[\d]+\.[\d]+/g, "V")                 // strip 2-part versions
+    .trim();
+  const raw = `${ip ?? ""}|${normUA}`;
+  const encoded = new TextEncoder().encode(raw);
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoded);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("").slice(0, 40);
+}
+
+// ─── Utility helpers ──────────────────────────────────────────────────────────
+
 const isSkipCode = (code: string) => {
   return (
     code === "tempobook" ||
@@ -29,10 +91,6 @@ function detectBrowser(userAgent: string) {
   if (/safari/i.test(userAgent) && !/chrome/i.test(userAgent)) return "Safari";
   if (/edge|edg/i.test(userAgent)) return "Edge";
   if (/opera|opr/i.test(userAgent)) return "Opera";
-  if (/facebookexternalhit|facebot/i.test(userAgent)) return "Facebook Scraper";
-  if (/googlebot/i.test(userAgent)) return "Googlebot";
-  if (/twitterbot/i.test(userAgent)) return "Twitterbot";
-  if (/linkedinbot/i.test(userAgent)) return "LinkedInbot";
   return "Other";
 }
 
@@ -149,6 +207,40 @@ export async function GET(
   const forwardedFor = request.headers.get("x-forwarded-for") || "";
   const ip = request.headers.get("x-real-ip") || forwardedFor.split(",")[0]?.trim() || null;
 
+  // ── LAYER 1: Edge bot pre-filter ──────────────────────────────────────────
+  // If this is a known bot / crawler / preview service, redirect silently
+  // without touching the database or firing any analytics event.
+  if (isLikelyBot(userAgent, request)) {
+    // We still need to resolve the destination URL to redirect properly.
+    // Use the fast RPC first, fall back to direct DB query.
+    const supabase = createAdminClient();
+    const { data: rpcData } = await supabase.rpc("resolve_link_and_log_click", {
+      p_code: code,
+      p_ip: null,          // do NOT pass IP — prevents any DB write
+      p_user_agent: null,  // do NOT pass UA — skips bot-check insert path
+      p_referrer: null,
+      p_device_type: null,
+      p_browser: null,
+      p_os: null,
+      p_password: pw || null,
+      p_country: null,
+      p_country_code: null,
+      p_city: null,
+      p_fingerprint: null,
+    });
+
+    const rpcRow = Array.isArray(rpcData) ? rpcData[0] : rpcData;
+    const botDest = rpcRow?.destination_url;
+    if (botDest) return redirectResponse(botDest);
+
+    // Fallback if RPC fails for bots
+    const fallback = await resolveLinkFallback(code);
+    if (!fallback) return new Response("Not Found", { status: 404 });
+    if (fallback.is_password_protected && !pw) return protectedLinkResponse();
+    return redirectResponse(fallback.destination_url);
+  }
+  // ── End of bot pre-filter ─────────────────────────────────────────────────
+
   const deviceType = detectDeviceType(userAgent);
   const browser = detectBrowser(userAgent);
   const os = detectOS(userAgent);
@@ -173,6 +265,9 @@ export async function GET(
 
   const hasEdgeGeo = Boolean(edgeCountryCode && edgeCountry);
 
+  // Build browser fingerprint for accurate unique-user deduplication
+  const fingerprint = await buildFingerprint(ip, userAgent);
+
   // Use Admin Client for the critical path to avoid auth overhead in redirect
   const supabase = createAdminClient();
   const { data, error } = await supabase.rpc("resolve_link_and_log_click", {
@@ -187,6 +282,7 @@ export async function GET(
     p_country: null,
     p_country_code: null,
     p_city: null,
+    p_fingerprint: fingerprint,
   });
 
   if (error) {
@@ -225,6 +321,7 @@ export async function GET(
             deviceType,
             browser,
             os,
+            fingerprint,
             countryHint: hasEdgeGeo ? edgeCountry : null,
             countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
             cityHint: hasEdgeGeo ? edgeCity : null,
@@ -281,6 +378,7 @@ export async function GET(
             deviceType,
             browser,
             os,
+            fingerprint,
             countryHint: hasEdgeGeo ? edgeCountry : null,
             countryCodeHint: hasEdgeGeo ? edgeCountryCode : null,
             cityHint: hasEdgeGeo ? edgeCity : null,

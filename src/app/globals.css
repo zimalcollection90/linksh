@@ -103,15 +103,31 @@
       hsl(var(--muted)) 75%
     );
     background-size: 200% 100%;
-    animation: shimmer 2s infinite;
+    animation: shimmer 1.6s ease-in-out infinite;
   }
   @keyframes shimmer {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
   }
+
+  /* Smooth page entrance */
+  .page-fade-in {
+    animation: pageFadeIn 0.25s ease-out;
+  }
+  @keyframes pageFadeIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Custom scrollbar for sidebar nav */
+  .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { background: hsl(var(--sidebar-border)); border-radius: 4px; }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: hsl(var(--sidebar-primary)); }
 }
 
 ::-webkit-scrollbar { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: hsl(var(--border)); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: hsl(var(--primary)); }
+

@@ -36,8 +36,10 @@ interface MemberDashboardProps {
   recentLinks: any[];
   profile: any;
   trendData?: Array<{ date: string; clicks: number; earnings: number }>;
-  monthlyGoal?: number;
-  monthlyClicks?: number;
+  personalGoal: number;
+  personalClicks: number;
+  globalGoal: number;
+  overallClicks: number;
   topCountries?: Array<{ country: string; country_code: string; click_count: number }>;
   currentRange?: string;
   heatmapData?: Array<{ code: string; value: number }>;
@@ -48,15 +50,17 @@ export default function MemberDashboard({
   recentLinks,
   profile,
   trendData,
-  monthlyGoal = 1000,
-  monthlyClicks = 0,
+  personalGoal = 1000,
+  personalClicks = 0,
+  globalGoal = 10000,
+  overallClicks = 0,
   topCountries = [],
   currentRange = "today",
   heatmapData = [],
 }: MemberDashboardProps) {
   const displayName = profile?.display_name || profile?.full_name || "there";
-  const goalClicks = monthlyGoal;
-  const progress = Math.min((monthlyClicks / goalClicks) * 100, 100);
+  const personalProgress = Math.min((personalClicks / (personalGoal || 1)) * 100, 100);
+  const globalProgress = Math.min((overallClicks / (globalGoal || 1)) * 100, 100);
 
   const rangeLabel = {
     today: "today",
@@ -118,40 +122,73 @@ export default function MemberDashboard({
           >
             <div className="absolute -right-4 -top-4 w-16 h-16 bg-primary/10 rounded-full blur-2xl group-hover:bg-primary/20 transition-all duration-700" />
             
-            <div className="flex items-center gap-2 mb-6">
+            <div className="flex items-center gap-2 mb-4">
               <div className="p-1.5 rounded-lg bg-primary/20 text-primary">
                 <Target className="w-4 h-4" />
               </div>
-              <h3 className="font-bold text-sm">Monthly Goal</h3>
-              <span className="ml-auto text-[11px] font-bold text-primary">
-                {progress.toFixed(1)}%
-              </span>
+              <h3 className="font-bold text-sm">Monthly Goal Progress</h3>
             </div>
 
-            <div className="space-y-4">
-              <div className="flex items-end justify-between">
-                <p className="text-xl sm:text-2xl font-black text-foreground tabular-nums">
-                  {monthlyClicks.toLocaleString()}
-                  <span className="text-xs sm:text-sm font-normal text-muted-foreground ml-1">/ {goalClicks.toLocaleString()}</span>
+            <div className="space-y-5">
+              {/* Personal Goal */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-xs font-bold text-foreground">My Personal Target</span>
+                  <span className="text-[11px] font-bold text-primary">
+                    {personalProgress.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between text-base font-black tabular-nums text-foreground">
+                  <span>
+                    {personalClicks.toLocaleString()}
+                    <span className="text-xs font-normal text-muted-foreground ml-1">/ {personalGoal.toLocaleString()}</span>
+                  </span>
+                </div>
+                <div className="relative h-2 w-full bg-primary/15 rounded-full overflow-hidden border border-primary/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${personalProgress}%` }}
+                    transition={{ duration: 1.5, ease: "circOut", delay: 0.5 }}
+                    className="h-full bg-primary relative"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.3)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
+                  </motion.div>
+                </div>
+                <p className="text-[10px] text-muted-foreground font-medium italic">
+                  {personalProgress >= 100
+                    ? "🔥 Incredible! You've smashed your monthly target!"
+                    : `You need ${(personalGoal - personalClicks).toLocaleString()} more clicks to hit your goal.`}
                 </p>
               </div>
-              
-              <div className="relative h-2.5 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
-                <motion.div
-                  initial={{ width: 0 }}
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 1.5, ease: "circOut", delay: 0.5 }}
-                  className="h-full bg-primary relative"
-                >
-                  <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.3)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
-                </motion.div>
-              </div>
 
-              <p className="text-[10px] sm:text-[11px] text-muted-foreground font-medium italic">
-                {progress >= 100
-                  ? "🔥 Incredible! You've smashed your monthly target!"
-                  : `You need ${(goalClicks - monthlyClicks).toLocaleString()} more clicks to hit your goal.`}
-              </p>
+              {/* Divider */}
+              <div className="h-px bg-border/40" />
+
+              {/* Global Platform Effort */}
+              <div className="space-y-2">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[11px] font-bold text-muted-foreground">Global Platform Effort</span>
+                  <span className="text-[10px] font-bold text-muted-foreground">
+                    {globalProgress.toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-baseline justify-between text-xs font-bold tabular-nums text-foreground/80">
+                  <span>
+                    {overallClicks.toLocaleString()}
+                    <span className="text-[10px] font-normal text-muted-foreground/60 ml-1">/ {globalGoal.toLocaleString()}</span>
+                  </span>
+                </div>
+                <div className="relative h-1.5 w-full bg-primary/10 rounded-full overflow-hidden border border-primary/5">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${globalProgress}%` }}
+                    transition={{ duration: 1.5, ease: "circOut", delay: 0.7 }}
+                    className="h-full bg-emerald-500 relative"
+                  >
+                    <div className="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.3)_50%,transparent_100%)] animate-[shimmer_2s_infinite]" />
+                  </motion.div>
+                </div>
+              </div>
             </div>
           </motion.div>
 

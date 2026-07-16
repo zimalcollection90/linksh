@@ -2,6 +2,22 @@ import { inngest } from "../client";
 import { createAdminClient } from "../../../supabase/admin";
 import { CC_TO_COUNTRY } from "../../utils/geo";
 
+// ─── Shared bot-detection pattern (must mirror [code]/route.ts) ───────────────
+// The edge route already pre-filters bots, but the Inngest `analytics/click.recorded`
+// path can also be triggered via the fallback path (when the RPC fails). This
+// ensures we never record a bot click regardless of which code path fires.
+const BOT_UA_PATTERN =
+  /bot|crawler|spider|crawl|scraper|preview|prerender|preload|prefetch|meta-externalagent|facebookexternalhit|facebot|whatsapp|telegrambot|discordbot|linkedinbot|slackbot|slackhq|twitterbot|pinterest|applebot|googlebot|google-read-aloud|googleimageproxy|feedburner|feedfetcher|bingbot|msnbot|slurp|duckduckbot|baiduspider|yandex|yandexbot|petalbot|bytespider|ahrefsbot|semrushbot|mj12bot|dotbot|blexbot|rogerbot|exabot|archive\.org_bot|ia_archiver|uptimerobot|statuscake|pingdom|gtmetrix|datadog|headlesschrome|headless|phantomjs|puppeteer|playwright|selenium|webdriver|python-requests|python\/|curl\/|wget\/|libwww|java\/|go-http-client|okhttp|axios|node-fetch|got\/|scrapy|httpx|requests|urllib|mechanize|ruby|perl|php\/|cfnetwork|nativehost|dataprovider|mail\.ru|barkrowler|proximic|scoutjet|seznambot|seokicks|sistrix|similarweb|deepcrawl|netcraft|nikto|masscan|zgrab|nuclei|dirbuster|sqlmap|nmap/i;
+
+const MIN_REAL_UA_LENGTH = 50;
+
+function isLikelyBotUA(userAgent: string | undefined | null): boolean {
+  if (!userAgent || userAgent.trim().length === 0) return true;
+  if (BOT_UA_PATTERN.test(userAgent)) return true;
+  if (userAgent.length < MIN_REAL_UA_LENGTH) return true;
+  return false;
+}
+
 /**
  * Resolve a real IP address to country/city using multiple fallback GeoIP providers.
  * Runs inside Inngest so it has no serverless timeout — full retry guarantees.
@@ -108,9 +124,11 @@ async function resolveGeoIP(
 
 /**
  * Handles a new click event end-to-end:
- *  1. Resolve GeoIP
- *  2. Insert click_events row with full data
- *  3. Increment link click counter
+ *  1. Bot filter — discard if user-agent looks automated (defense-in-depth)
+ *  2. Resolve GeoIP
+ *  3. Deduplicate by IP + fingerprint (24-hour window per link)
+ *  4. Insert click_events row with full data
+ *  5. Increment link click counter
  */
 export const enrichClickFunction = inngest.createFunction(
   {
@@ -129,10 +147,18 @@ export const enrichClickFunction = inngest.createFunction(
       deviceType,
       browser,
       os,
+      fingerprint,
       countryHint,
       countryCodeHint,
       cityHint,
     } = event.data;
+
+    // Step 0: Bot filter (defense-in-depth — the edge route already filters,
+    // but we guard here too in case the Inngest event was fired via the
+    // RPC-failure fallback path before the edge filter was deployed).
+    if (isLikelyBotUA(userAgent)) {
+      return { skipped: true, reason: "bot_ua" };
+    }
 
     // Step 1: Resolve GeoIP (skip if edge CDN already gave us the country)
     const geo = await step.run("resolve-geo", async () => {
@@ -154,10 +180,11 @@ export const enrichClickFunction = inngest.createFunction(
     const safeCity =
       geo.city && !["unknown", ""].includes(geo.city.toLowerCase()) ? geo.city : null;
 
-    // Step 2: Detect bots, duplicates, and insert click event
+    // Step 2: Detect duplicates and insert click event
     const clickResult = await step.run("insert-click-event", async () => {
       const adminClient = createAdminClient();
 
+      // Self-click exclusion (user visits their own link from their own IP)
       let isSelfClick = false;
       if (ip && userId) {
         const { data: exclusion } = await adminClient
@@ -166,19 +193,34 @@ export const enrichClickFunction = inngest.createFunction(
         isSelfClick = Boolean(exclusion);
       }
 
-      let ipClickedLast24h = false;
-      if (ip && !isSelfClick) {
+      // Fingerprint-based dedup: same fingerprint = same browser/device
+      // IP-only fallback if no fingerprint was provided
+      let isRepeat = false;
+      if (!isSelfClick) {
         const sinceIso = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
-        const { data: priorClick } = await adminClient
-          .from("click_events").select("id")
-          .eq("link_id", linkId).eq("ip_address", ip)
-          .gte("clicked_at", sinceIso).eq("is_unique", true).maybeSingle();
-        ipClickedLast24h = Boolean(priorClick);
+
+        if (fingerprint) {
+          // Prefer fingerprint dedup — more accurate than IP alone
+          const { data: priorByFingerprint } = await adminClient
+            .from("click_events").select("id")
+            .eq("link_id", linkId)
+            .eq("fingerprint", fingerprint)
+            .gte("clicked_at", sinceIso)
+            .eq("is_unique", true)
+            .maybeSingle();
+          isRepeat = Boolean(priorByFingerprint);
+        } else if (ip) {
+          // Fallback: IP-only dedup
+          const { data: priorByIp } = await adminClient
+            .from("click_events").select("id")
+            .eq("link_id", linkId).eq("ip_address", ip)
+            .gte("clicked_at", sinceIso).eq("is_unique", true).maybeSingle();
+          isRepeat = Boolean(priorByIp);
+        }
       }
 
-      const isUnique = Boolean(ip) && !isSelfClick && !ipClickedLast24h;
+      const isUnique = !isSelfClick && !isRepeat;
 
-      // Only insert unique human clicks according to the new logic
       if (!isUnique) {
         return { clickEventId: null, isUnique };
       }
@@ -189,6 +231,7 @@ export const enrichClickFunction = inngest.createFunction(
           link_id: linkId,
           user_id: userId,
           ip_address: ip,
+          fingerprint: fingerprint || null,
           country: safeCountry,
           country_code: safeCountryCode,
           city: safeCity,
@@ -220,6 +263,8 @@ export const enrichClickFunction = inngest.createFunction(
 
 /**
  * Enriches an EXISTING click_events row (created by the Supabase RPC) with geo data.
+ * This path is safe — the SQL RPC already performed bot filtering before inserting
+ * the row, so we only need to patch in the country/city from GeoIP.
  */
 export const enrichExistingClickFunction = inngest.createFunction(
   {
